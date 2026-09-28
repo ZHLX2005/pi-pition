@@ -54,8 +54,7 @@ interface ActiveSpan {
   spanId: string;            // ulid-ish，唯一 id
   eventName: string;         // "开会"、"跑步"、"午休"
   note?: string;             // 备注（如 "和 x 团队对齐排期"）
-  startedAt: string;         // ISO 字符串
-  lastHeartbeatAt: string;   // ISO 字符串，end 时检查时长用
+  startedAt: string;         // ISO 字符串；每次 before_agent_start 现算 (now - startedAt) 得累计时长
 }
 
 // 配置定位：扩展文件所在目录 → 其父目录（包形式安装时配置在包根）
@@ -442,14 +441,13 @@ function currentSpan(): ActiveSpan | null {
 }
 
 // 把 span 渲染成 1-3 行"全局上下文"文案，注入到 before_agent_start。
-// 例：📍 进行中：跑步（公园跑步 5 公里），已 28 分钟（最近心跳 23 分钟前）
+// 例：📍 进行中：跑步（公园跑步 5 公里），已 28 分钟（14:05 开始）
 function renderSpanStatus(span: ActiveSpan, now: Date): string {
   const started = new Date(span.startedAt).getTime();
-  const lastBeat = new Date(span.lastHeartbeatAt).getTime();
   const elapsedMin = Math.max(0, Math.round((now.getTime() - started) / 60000));
-  const sinceLastBeatMin = Math.max(0, Math.round((now.getTime() - lastBeat) / 60000));
   const noteSuffix = span.note ? `（${span.note}）` : "";
-  return `📍 进行中：${span.eventName}${noteSuffix}，已 ${elapsedMin} 分钟（最近心跳 ${sinceLastBeatMin} 分钟前）。\n   若完成：调 pition_span action=end；若仍在继续：action=heartbeat（建议每 10-15 分钟一次）。`;
+  const clock = new Date(started).toTimeString().slice(0, 5);
+  return `📍 进行中：${span.eventName}${noteSuffix}，已 ${elapsedMin} 分钟（${clock} 开始）。\n   若完成：调 pition_span action=end。`;
 }
 
 function registerRoleMode(pi: ExtensionAPI, state: RoleState): void {
@@ -959,27 +957,26 @@ return {
     },
   });
 
-  // ---------- pition_span（区间事件：start / heartbeat / end）----------
+  // ---------- pition_span（区间事件：start / end）----------
   // 区间事件：start 时只记 cfg._activeSpan（不入 Notion），end 时整段拼成一条正文落到当前 page。
-  // 全局提示词的 pition_span section 会实时显示「你正在做 X，已 N 分钟（HH:MM 开始）」——
-  // 该数字由 extensions/pition.ts:446 renderSpanStatus 现算，不是占位符。agent 据此调 heartbeat / end。
+  // 累计时长**不需要心跳**：before_agent_start 每次现算 (now - startedAt)，跨轮次自动增长；
+  // agent 看到注入的时长 + 用户语气判断结束时直接调 end。
   pi.registerTool({
     name: "pition_span",
     label: "Pition 区间事件",
-    description: `区间事件管理（类似计时器）：记录「开始-持续-结束」的事件（开会 / 跑步 / 午休 / 写代码 / 等）。3 个 action：start=开始一段新事件（仅落 cfg，不入 Notion）；heartbeat=续约（仍在继续，agent 据此主动调）；end=收尾——把整段 [HH:MM-HH:MM 持续 N 分钟] 事件名 + 备注 拼成一条正文写入当前 page。start 时如果已有 active span，报错让 agent 先 end 旧的。`,
+    description: `区间事件管理（类似计时器）：记录「开始-持续-结束」的事件（开会 / 跑步 / 午休 / 写代码 / 等）。2 个 action：start=开始一段新事件（仅落 cfg，不入 Notion）；end=收尾——把整段 [HH:MM-HH:MM 持续 N 分钟] 事件名 + 备注 拼成一条正文写入当前 page。start 时如果已有 active span，报错让 agent 先 end 旧的。累计时长由全局提示词的 pition_span section 自动现算注入，无需手动续约。`,
     promptGuidelines: [
       "用户开始/进入一个有时长的事件（「开始跑步」「开始午休」「开始开会」）→ 调 pition_span action=start（带事件名 + 可选备注）。",
-      "如果用户话里含「还在 / 仍然 / 继续 / 一直」并提到当前进行中的事 → 调 pition_span action=heartbeat（agent 据全局提示词的 pition_span section 里给出的累计时长自行判断需要调，不要凭『N 分钟』这种字面量）。",
+      "进行中的事件时长会自动出现在全局提示词的 pition_span section（实际数字，每次对话自动更新），不需要也不存在 heartbeat 调用。",
       "用户说结束 / 完成 / 出来了 / 感受 → 调 pition_span action=end（事件名 / 备注 / 感受会被合并进正文写入当前 page）。",
       "**不要**用 pition_write 写『开始跑步』或『结束跑步』这类有开始+结束的事件——用 pition_span 记录整段。",
     ],
     parameters: Type.Object({
       action: Type.Union([
         Type.Literal("start"),
-        Type.Literal("heartbeat"),
         Type.Literal("end"),
-      ], { description: "start=开新 span；heartbeat=续约；end=收尾并写入 Notion" }),
-      eventName: Type.Optional(Type.String({ description: "事件名（action=start 必填；heartbeat/end 可选沿用 active span）" })),
+      ], { description: "start=开新 span；end=收尾并写入 Notion" }),
+      eventName: Type.Optional(Type.String({ description: "事件名（action=start 必填；end 可选沿用 active span）" })),
       note: Type.Optional(Type.String({ description: "可选备注（action=start 时设定；end 时可补充感受/收尾说明）" })),
       summary: Type.Optional(Type.String({ description: "action=end 时可选：事后总结/感受/结果，合并进正文" })),
     }),
@@ -1002,27 +999,11 @@ return {
           eventName: params.eventName,
           note: params.note,
           startedAt: isoNow,
-          lastHeartbeatAt: isoNow,
         };
         saveConfig({ ...cfg, _activeSpan: span });
         return {
           content: [{ type: "text", text: `📍 已开始「${span.eventName}」${span.note ? `（${span.note}）` : ""}。\n全局提示词的 pition_span section 会持续注入累计时长（实际数字，不是占位符）。结束请调 pition_span action=end。` }],
           details: { action: "start", span },
-        };
-      }
-
-      if (params.action === "heartbeat") {
-        if (!cfg._activeSpan) throw new Error("没有进行中的 span 可以 heartbeat——先 action=start");
-        const updated: ActiveSpan = {
-          ...cfg._activeSpan,
-          note: params.note ?? cfg._activeSpan.note,
-          lastHeartbeatAt: isoNow,
-        };
-        saveConfig({ ...cfg, _activeSpan: updated });
-        const elapsed = Math.max(0, Math.round((now.getTime() - new Date(updated.startedAt).getTime()) / 60000));
-        return {
-          content: [{ type: "text", text: `💓 heartbeat 已记录——「${updated.eventName}」仍在进行（已 ${elapsed} 分钟）。` }],
-          details: { action: "heartbeat", span: updated },
         };
       }
 
