@@ -1,0 +1,7 @@
+{
+  "$schema": "./pition.config.schema.json",
+  "token": "",
+  "bindings": {},
+  "currentBindingId": null,
+  "_assistantMode": false
+}
