@@ -45,9 +45,9 @@ interface PitionConfig {
   // 运行时模式（助理模式）开关 — 持久化配置，可被 pition_boot stage=set_mode 或 /pition-mode 切换
   // 缺省 = false（首次装完不会被自动注入；agent 主动开启后才注入）
   _assistantMode?: boolean;
-  // 当前进行中的 span（单数）。start 时落盘，end 后置 null。
-  // 跨重启保留——agent reload 也能记得「我还在跑步」。
-  _activeSpan?: ActiveSpan | null;
+  // 进行中的 span（可并行多个——人可以边养神边听歌）。start 追加，end 按事件名移除。
+  // 跨重启保留——agent reload 也能记得「还在跑步」。
+  _activeSpans?: ActiveSpan[];
 }
 
 interface ActiveSpan {
@@ -91,7 +91,14 @@ function loadConfig(): PitionConfig | null {
     if (!currentBindingId || !bindings[currentBindingId]) {
       currentBindingId = Object.keys(bindings)[0] ?? null;
     }
-    return { token: raw.token, bindings, currentBindingId, _assistantMode: raw._assistantMode, _activeSpan: raw._activeSpan ?? null };
+    // _activeSpans 兼容：老格式 _activeSpan 单对象 → 数组首元素
+    let activeSpans: ActiveSpan[] | undefined;
+    if (Array.isArray(raw._activeSpans)) {
+      activeSpans = raw._activeSpans;
+    } else if (raw._activeSpan && typeof raw._activeSpan === "object") {
+      activeSpans = [raw._activeSpan];
+    }
+    return { token: raw.token, bindings, currentBindingId, _assistantMode: raw._assistantMode, _activeSpans: activeSpans };
   } catch {
     // 无配置或非法 JSON
   }
@@ -432,22 +439,29 @@ function buildRoleInjections(cfg: PitionConfig): { guidelines: string[]; section
   return { guidelines, sections };
 }
 
-// 运行态 span 解析器：每次 before_agent_start 都重新 loadConfig 拿 _activeSpan。
+// 运行态 span 解析器：每次 before_agent_start 都重新 loadConfig 拿 _activeSpans。
 // 必须放在 registerRoleMode 之前 —— jiti 转 ESM 后闭包内对模块顶层函数的引用在
 // async handler emit 阶段才真正求值，hoist 在异步链下不可靠（踩过 ReferenceError）。
-function currentSpan(): ActiveSpan | null {
+function currentSpans(): ActiveSpan[] {
   const cfg = loadConfig();
-  return cfg?._activeSpan ?? null;
+  return cfg?._activeSpans ?? [];
 }
 
-// 把 span 渲染成 1-3 行"全局上下文"文案，注入到 before_agent_start。
-// 例：📍 进行中：跑步（公园跑步 5 公里），已 28 分钟（14:05 开始）
-function renderSpanStatus(span: ActiveSpan, now: Date): string {
-  const started = new Date(span.startedAt).getTime();
-  const elapsedMin = Math.max(0, Math.round((now.getTime() - started) / 60000));
-  const noteSuffix = span.note ? `（${span.note}）` : "";
-  const clock = new Date(started).toTimeString().slice(0, 5);
-  return `📍 进行中：${span.eventName}${noteSuffix}，已 ${elapsedMin} 分钟（${clock} 开始）。\n   若完成：调 pition_span action=end。`;
+// 把 spans 渲染成"全局上下文"文案，注入到 before_agent_start。支持并行多事件。
+// 例：
+//   📍 进行中 2 件事：
+//   - 养神，已 3 分钟（01:38 开始）
+//   - 调试 pition，已 12 分钟（01:29 开始）
+//   结束某个：调 pition_span action=end eventName=<名>。
+function renderSpansStatus(spans: ActiveSpan[], now: Date): string {
+  const lines = spans.map((span) => {
+    const started = new Date(span.startedAt).getTime();
+    const elapsedMin = Math.max(0, Math.round((now.getTime() - started) / 60000));
+    const noteSuffix = span.note ? `（${span.note}）` : "";
+    const clock = new Date(started).toTimeString().slice(0, 5);
+    return `- ${span.eventName}${noteSuffix}，已 ${elapsedMin} 分钟（${clock} 开始）`;
+  });
+  return `📍 进行中 ${spans.length} 件事：\n${lines.join("\n")}\n   结束某个：调 pition_span action=end eventName=<事件名>。`;
 }
 
 function registerRoleMode(pi: ExtensionAPI, state: RoleState): void {
@@ -462,9 +476,9 @@ function registerRoleMode(pi: ExtensionAPI, state: RoleState): void {
       }
     }
     // 2) 进行中 span 上下文注入 —— 独立于助理模式（即使助理模式关，span 状态也要可见）
-    const span = currentSpan();
-    if (span) {
-      event.systemPromptOptions.sections["pition_span"] = renderSpanStatus(span, new Date());
+    const spans = currentSpans();
+    if (spans.length) {
+      event.systemPromptOptions.sections["pition_span"] = renderSpansStatus(spans, new Date());
     }
   });
 
@@ -957,26 +971,26 @@ return {
     },
   });
 
-  // ---------- pition_span（区间事件：start / end）----------
-  // 区间事件：start 时只记 cfg._activeSpan（不入 Notion），end 时整段拼成一条正文落到当前 page。
-  // 累计时长**不需要心跳**：before_agent_start 每次现算 (now - startedAt)，跨轮次自动增长；
-  // agent 看到注入的时长 + 用户语气判断结束时直接调 end。
+  // ---------- pition_span（区间事件：start / end，支持并行）----------
+  // 区间事件：start 时追加到 cfg._activeSpans（不入 Notion），end 时按事件名收尾整段落到当前 page。
+  // 可并行多个事件（边养神边听歌是真实生活）。累计时长**不需要心跳**：before_agent_start
+  // 每次现算 (now - startedAt)，跨轮次自动增长。
   pi.registerTool({
     name: "pition_span",
     label: "Pition 区间事件",
-    description: `区间事件管理（类似计时器）：记录「开始-持续-结束」的事件（开会 / 跑步 / 午休 / 写代码 / 等）。2 个 action：start=开始一段新事件（仅落 cfg，不入 Notion）；end=收尾——把整段 [HH:MM-HH:MM 持续 N 分钟] 事件名 + 备注 拼成一条正文写入当前 page。start 时如果已有 active span，报错让 agent 先 end 旧的。累计时长由全局提示词的 pition_span section 自动现算注入，无需手动续约。`,
+    description: `区间事件管理（类似计时器，支持并行多个）：记录「开始-持续-结束」的事件（开会 / 跑步 / 午休 / 写代码 / 等）。2 个 action：start=开始一段新事件（仅落 cfg，不入 Notion；可同时进行多件事）；end=收尾——把整段 [HH:MM-HH:MM 持续 N 分钟] 事件名 + 备注 拼成一条正文写入当前 page（eventName 精确匹配；省略时若只有一个进行中的 span 则收尾它，多个时报错列出全部）。累计时长由全局提示词的 pition_span section 自动现算注入，无需手动续约。`,
     promptGuidelines: [
-      "用户开始/进入一个有时长的事件（「开始跑步」「开始午休」「开始开会」）→ 调 pition_span action=start（带事件名 + 可选备注）。",
-      "进行中的事件时长会自动出现在全局提示词的 pition_span section（实际数字，每次对话自动更新），不需要也不存在 heartbeat 调用。",
-      "用户说结束 / 完成 / 出来了 / 感受 → 调 pition_span action=end（事件名 / 备注 / 感受会被合并进正文写入当前 page）。",
+      "用户开始/进入一个有时长的事件（「开始跑步」「开始午休」「开始开会」）→ 调 pition_span action=start（带事件名 + 可选备注）。用户开始新事件时**不要**要求先结束旧事件——事件可并行。",
+      "进行中的事件（可能多件）会自动出现在全局提示词的 pition_span section（实际时长数字，每次对话自动更新），不需要也不存在 heartbeat 调用。",
+      "用户说结束 / 完成 / 出来了 / 感受 → 调 pition_span action=end（带 eventName 精确收尾那件事；事件名 / 备注 / 感受会被合并进正文写入当前 page）。",
       "**不要**用 pition_write 写『开始跑步』或『结束跑步』这类有开始+结束的事件——用 pition_span 记录整段。",
     ],
     parameters: Type.Object({
       action: Type.Union([
         Type.Literal("start"),
         Type.Literal("end"),
-      ], { description: "start=开新 span；end=收尾并写入 Notion" }),
-      eventName: Type.Optional(Type.String({ description: "事件名（action=start 必填；end 可选沿用 active span）" })),
+      ], { description: "start=开新 span（可并行）；end=收尾指定 span 并写入 Notion" }),
+      eventName: Type.Optional(Type.String({ description: "事件名（action=start 必填；action=end 按事件名精确收尾，省略时仅一个 span 才行）" })),
       note: Type.Optional(Type.String({ description: "可选备注（action=start 时设定；end 时可补充感受/收尾说明）" })),
       summary: Type.Optional(Type.String({ description: "action=end 时可选：事后总结/感受/结果，合并进正文" })),
     }),
@@ -986,30 +1000,41 @@ return {
       if (!cfg) throw new Error("pition 未配置");
       const now = new Date();
       const isoNow = now.toISOString();
+      const spans = cfg._activeSpans ?? [];
 
       if (params.action === "start") {
         if (!params.eventName) throw new Error("action=start 必须传 eventName");
-        if (cfg._activeSpan) {
-          throw new Error(
-            `已有进行中的 span「${cfg._activeSpan.eventName}」开始于 ${cfg._activeSpan.startedAt}——请先 pition_span action=end 收尾它，再开新的。`,
-          );
-        }
         const span: ActiveSpan = {
           spanId: `span_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           eventName: params.eventName,
           note: params.note,
           startedAt: isoNow,
         };
-        saveConfig({ ...cfg, _activeSpan: span });
+        saveConfig({ ...cfg, _activeSpans: [...spans, span] });
+        const others = spans.length ? `（并行中还有 ${spans.length} 件：「${spans.map((s) => s.eventName).join("」「")}」）` : "";
         return {
-          content: [{ type: "text", text: `📍 已开始「${span.eventName}」${span.note ? `（${span.note}）` : ""}。\n全局提示词的 pition_span section 会持续注入累计时长（实际数字，不是占位符）。结束请调 pition_span action=end。` }],
-          details: { action: "start", span },
+          content: [{ type: "text", text: `📍 已开始「${span.eventName}」${span.note ? `（${span.note}）` : ""}${others}。\n全局提示词的 pition_span section 会持续注入各事件累计时长（实际数字，不是占位符）。结束请调 pition_span action=end。` }],
+          details: { action: "start", span, totalActive: spans.length + 1 },
         };
       }
 
       // action === "end"
-      if (!cfg._activeSpan) throw new Error("没有进行中的 span 可以 end——直接调 pition_write 即可");
-      const span = cfg._activeSpan;
+      if (!spans.length) throw new Error("没有进行中的 span 可以 end——直接调 pition_write 即可");
+      let target: ActiveSpan | undefined;
+      let rest: ActiveSpan[];
+      if (params.eventName) {
+        target = spans.find((s) => s.eventName === params.eventName);
+        if (!target) {
+          throw new Error(`没有名为「${params.eventName}」的进行中事件。当前进行中：${spans.map((s) => `「${s.eventName}」`).join("、") || "无"}`);
+        }
+        rest = spans.filter((s) => s !== target);
+      } else if (spans.length === 1) {
+        target = spans[0];
+        rest = [];
+      } else {
+        throw new Error(`有 ${spans.length} 个进行中的事件，必须传 eventName 指定收尾哪个：${spans.map((s) => `「${s.eventName}」`).join("、")}`);
+      }
+      const span = target;
       const started = new Date(span.startedAt);
       const endedAt = now;
       const elapsedMs = endedAt.getTime() - started.getTime();
@@ -1038,12 +1063,12 @@ return {
           }],
         });
       }
-      // 清除 cfg._activeSpan（end 后不再注入 span 状态）
-      const { _activeSpan, ...rest } = cfg;
-      saveConfig({ ...rest, _activeSpan: null });
+      // 从 cfg._activeSpans 移除该 span（其余保留）
+      saveConfig({ ...cfg, _activeSpans: rest });
+      const stillActive = rest.length ? `（仍在进行：${rest.map((s) => `「${s.eventName}」`).join("、")}）` : "";
       return {
-        content: [{ type: "text", text: `✅ 「${span.eventName}」已结束（持续 ${elapsedMin} 分钟），已写入「${binding.title}」当前 page。` }],
-        details: { action: "end", span, pageId: latest?.id, paragraphText, elapsedMin },
+        content: [{ type: "text", text: `✅ 「${span.eventName}」已结束（持续 ${elapsedMin} 分钟），已写入「${binding.title}」当前 page。${stillActive}` }],
+        details: { action: "end", span, pageId: latest?.id, paragraphText, elapsedMin, stillActive: rest },
       };
     },
   });
