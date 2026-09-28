@@ -45,6 +45,17 @@ interface PitionConfig {
   // 运行时模式（助理模式）开关 — 持久化配置，可被 pition_boot stage=set_mode 或 /pition-mode 切换
   // 缺省 = false（首次装完不会被自动注入；agent 主动开启后才注入）
   _assistantMode?: boolean;
+  // 当前进行中的 span（单数）。start 时落盘，end 后置 null。
+  // 跨重启保留——agent reload 也能记得「我还在跑步」。
+  _activeSpan?: ActiveSpan | null;
+}
+
+interface ActiveSpan {
+  spanId: string;            // ulid-ish，唯一 id
+  eventName: string;         // "开会"、"跑步"、"午休"
+  note?: string;             // 备注（如 "和 x 团队对齐排期"）
+  startedAt: string;         // ISO 字符串
+  lastHeartbeatAt: string;   // ISO 字符串，end 时检查时长用
 }
 
 // 配置定位：扩展文件所在目录 → 其父目录（包形式安装时配置在包根）
@@ -422,15 +433,40 @@ function buildRoleInjections(cfg: PitionConfig): { guidelines: string[]; section
   return { guidelines, sections };
 }
 
+// 运行态 span 解析器：每次 before_agent_start 都重新 loadConfig 拿 _activeSpan。
+// 必须放在 registerRoleMode 之前 —— jiti 转 ESM 后闭包内对模块顶层函数的引用在
+// async handler emit 阶段才真正求值，hoist 在异步链下不可靠（踩过 ReferenceError）。
+function currentSpan(): ActiveSpan | null {
+  const cfg = loadConfig();
+  return cfg?._activeSpan ?? null;
+}
+
+// 把 span 渲染成 1-3 行"全局上下文"文案，注入到 before_agent_start。
+// 例：📍 进行中：跑步（公园跑步 5 公里），已 28 分钟（最近心跳 23 分钟前）
+function renderSpanStatus(span: ActiveSpan, now: Date): string {
+  const started = new Date(span.startedAt).getTime();
+  const lastBeat = new Date(span.lastHeartbeatAt).getTime();
+  const elapsedMin = Math.max(0, Math.round((now.getTime() - started) / 60000));
+  const sinceLastBeatMin = Math.max(0, Math.round((now.getTime() - lastBeat) / 60000));
+  const noteSuffix = span.note ? `（${span.note}）` : "";
+  return `📍 进行中：${span.eventName}${noteSuffix}，已 ${elapsedMin} 分钟（最近心跳 ${sinceLastBeatMin} 分钟前）。\n   若完成：调 pition_span action=end；若仍在继续：action=heartbeat（建议每 10-15 分钟一次）。`;
+}
+
 function registerRoleMode(pi: ExtensionAPI, state: RoleState): void {
   // 每次模型请求前注入（条件：开关 + 有配置）
   pi.on("before_agent_start", async (event) => {
-    if (!state.enabled) return;
-    if (!state.cfg || !state.cfg.currentBindingId || !state.cfg.bindings[state.cfg.currentBindingId]) return;
-    const { guidelines, sections } = buildRoleInjections(state.cfg);
-    for (const g of guidelines) event.systemPromptOptions.promptGuidelines.push(g);
-    for (const [name, content] of Object.entries(sections)) {
-      event.systemPromptOptions.sections[name] = content;
+    // 1) 助理模式注入（角色定位 + 行为准则）—— 条件：开关 + 有当前库
+    if (state.enabled && state.cfg && state.cfg.currentBindingId && state.cfg.bindings[state.cfg.currentBindingId]) {
+      const { guidelines, sections } = buildRoleInjections(state.cfg);
+      for (const g of guidelines) event.systemPromptOptions.promptGuidelines.push(g);
+      for (const [name, content] of Object.entries(sections)) {
+        event.systemPromptOptions.sections[name] = content;
+      }
+    }
+    // 2) 进行中 span 上下文注入 —— 独立于助理模式（即使助理模式关，span 状态也要可见）
+    const span = currentSpan();
+    if (span) {
+      event.systemPromptOptions.sections["pition_span"] = renderSpanStatus(span, new Date());
     }
   });
 
@@ -782,11 +818,13 @@ function currentBinding(): Binding {
   pi.registerTool({
     name: "pition_write",
     label: "Pition 写当前 page",
-    description: `日常记录的主路径：把属性修改和/或正文内容写到当前库的「当前 page」（按最后编辑时间倒序取 top1，通常就是今天那条由定时任务新建的 page）。默认自动给 appendContent 每段首加 [HH:MM]（本地时间）。如果该库还没有任何 page，本工具返回 warning（不抛错），由 agent 决定是否调 pition_create_today 手动建条——page 列表是定时任务管的，agent 不该主动建。当前库由 pition_boot stage=select_db 选定；要看当前库字段说明先调 pition_boot stage=done。`,
+    description: `日常记录的主路径：把属性修改和/或正文内容写到当前库的「当前 page」（按最后编辑时间倒序取 top1，通常就是今天那条由定时任务新建的 page）。默认自动给 appendContent 每段首加 [HH:MM]（本地时间）。如果该库还没有任何 page，本工具返回 warning（不抛错），由 agent 决定是否调 pition_create_today 手动建条——page 列表是定时任务管的，agent 不该主动建。当前库由 pition_boot stage=select_db 选定；要看当前库字段说明先调 pition_boot stage=done。\n\n属性是看版主写入区：multi_select 加 tag 用默认（union）/ number 累加用默认（累加）/ checkbox 用默认（取 OR）——这些"看板维度"反复累加合理；title / select / status / url / email / phone_number 单值字段永远用新值；想要整段覆盖某字段显式传 overwrite:true。返回里附 todaySoFar 直接预览今天该 page 全部内容。`,
     promptGuidelines: [
       "用户在记录今天的内容（日记、打卡、备注、流水、流水消费）时，**优先用 pition_write 追加**，这是日常主路径。",
+      "**属性 = 看版**：能写到属性的（multi_select / select / number / checkbox / status）尽量写到属性而不是堆在正文——便于 Notion 看板按维度统计。multi_select 加 tag、number 累加金额/时长、checkbox 打卡用默认 append；status / select 状态切换用 overwrite:true；同一事件的多维度（例：「运动 30 分钟 + 午餐花了 45 元」）一次性写在同一个 pition_write 调用的 properties 数组里。",
       "用户的对话里有「我刚/刚才」时，程序会自动加时间戳，agent 不必手动指定。",
       "如果 pition_write 返回 warning「该库还没有任何 page」，调 pition_create_today 手动建一条（逃生口）。",
+      "返回里 todaySoFar 是今天该 page 全部已记内容——写完应在回复里整体预览给用户 + 主动追问更多细节（先记原始再问优化）。",
       "不要调 pition_history 看 page 列表——page 列表心智不属于日常记录。",
     ],
     parameters: Type.Object({
@@ -831,12 +869,43 @@ function currentBinding(): Binding {
         }));
         await notion(null, "PATCH", `/v1/blocks/${latest.id}/children`, { children: blocks });
       }
-      return {
-        content: [{ type: "text", text: `已写入「${binding.title}」当前 page: ${latest.url}` }],
-        details: { store: binding.title, pageId: latest.id, url: latest.url, timestamp: when.toISOString(), prefixTimestamp: params.prefixTimestamp !== false },
-      };
-    },
-  });
+      // 写入后立刻读一次 page 全部内容——返回里附 todaySoFar 让模型直接预览 + 追问
+const [pageAfter, blocks] = await Promise.all([
+  notion(null, "GET", `/v1/pages/${latest.id}`),
+  notion(null, "GET", `/v1/blocks/${latest.id}/children?page_size=100`),
+]);
+const propsSnapshot = readPageProperties(binding, pageAfter.properties ?? {});
+// 属性按字段说明渲染：field.type/description 加当前值——看板场景下模型拿到能直接复述
+const propsBlock = Object.entries(binding.fields)
+  .map(([name, meta]) => {
+    const v = propsSnapshot[name];
+    if (v === undefined || v === null || v === "") return null;
+    const vStr = Array.isArray(v) ? v.join(", ") : String(v);
+    return `  - ${name} (${meta.type})${meta.description ? ` — ${meta.description}` : ""}: ${vStr}`;
+  })
+  .filter(Boolean)
+  .join("\n") || "  （无）";
+const contentBlock = (blocks.results as any[])
+  .filter((b: any) => b.type === "paragraph")
+  .map((b: any) => (b.paragraph?.rich_text ?? []).map((t: any) => t.plain_text).join(""))
+  .filter(Boolean)
+  .join("\n\n");
+const todaySoFar = `属性:\n${propsBlock}\n\n正文:\n${contentBlock || "（空）"}`;
+return {
+  content: [{ type: "text", text: `已写入「${binding.title}」当前 page: ${latest.url}\n\n—— 今日该 page 已记 ——\n${todaySoFar}` }],
+  details: {
+    store: binding.title,
+    pageId: latest.id,
+    url: latest.url,
+    timestamp: when.toISOString(),
+    prefixTimestamp: params.prefixTimestamp !== false,
+    todaySoFar,
+    todayProperties: propsSnapshot,
+    todayContent: contentBlock,
+  },
+};
+},
+});
 
   // ---------- pition_history（显式查 page 列表）----------
   // 默认场景：pition_write / pition_read 已足够。pition_history 留给"翻旧账"。
@@ -886,6 +955,113 @@ function currentBinding(): Binding {
       return {
         content: [{ type: "text", text: JSON.stringify(rows, null, 2) }],
         details: { store: binding.title, count: rows.length, page_list_kind: true },
+      };
+    },
+  });
+
+  // ---------- pition_span（区间事件：start / heartbeat / end）----------
+  // 区间事件：start 时只记 cfg._activeSpan（不入 Notion），end 时整段拼成一条正文落到当前 page。
+  // 全局提示词会持续提示 agent「你还在跑步（已 28 分钟）」—— agent 据此调 heartbeat / end。
+  pi.registerTool({
+    name: "pition_span",
+    label: "Pition 区间事件",
+    description: `区间事件管理（类似计时器）：记录「开始-持续-结束」的事件（开会 / 跑步 / 午休 / 写代码 / 等）。3 个 action：start=开始一段新事件（仅落 cfg，不入 Notion）；heartbeat=续约（仍在继续，agent 据此主动调）；end=收尾——把整段 [HH:MM-HH:MM 持续 N 分钟] 事件名 + 备注 拼成一条正文写入当前 page。start 时如果已有 active span，报错让 agent 先 end 旧的。`,
+    promptGuidelines: [
+      "用户开始/进入一个有时长的事件（「开始跑步」「开始午休」「开始开会」）→ 调 pition_span action=start（带事件名 + 可选备注）。",
+      "如果用户话里含「还在 / 仍然 / 继续 / 一直」并提到当前进行中的事 → 调 pition_span action=heartbeat（agent 据全局提示词里『已 N 分钟』自己判断需要调）。",
+      "用户说结束 / 完成 / 出来了 / 感受 → 调 pition_span action=end（事件名 / 备注 / 感受会被合并进正文写入当前 page）。",
+      "**不要**用 pition_write 写『开始跑步』或『结束跑步』这类有开始+结束的事件——用 pition_span 记录整段。",
+    ],
+    parameters: Type.Object({
+      action: Type.Union([
+        Type.Literal("start"),
+        Type.Literal("heartbeat"),
+        Type.Literal("end"),
+      ], { description: "start=开新 span；heartbeat=续约；end=收尾并写入 Notion" }),
+      eventName: Type.Optional(Type.String({ description: "事件名（action=start 必填；heartbeat/end 可选沿用 active span）" })),
+      note: Type.Optional(Type.String({ description: "可选备注（action=start 时设定；end 时可补充感受/收尾说明）" })),
+      summary: Type.Optional(Type.String({ description: "action=end 时可选：事后总结/感受/结果，合并进正文" })),
+    }),
+    async execute(_id, params) {
+      const binding = currentBinding();
+      const cfg = loadConfig();
+      if (!cfg) throw new Error("pition 未配置");
+      const now = new Date();
+      const isoNow = now.toISOString();
+
+      if (params.action === "start") {
+        if (!params.eventName) throw new Error("action=start 必须传 eventName");
+        if (cfg._activeSpan) {
+          throw new Error(
+            `已有进行中的 span「${cfg._activeSpan.eventName}」开始于 ${cfg._activeSpan.startedAt}——请先 pition_span action=end 收尾它，再开新的。`,
+          );
+        }
+        const span: ActiveSpan = {
+          spanId: `span_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          eventName: params.eventName,
+          note: params.note,
+          startedAt: isoNow,
+          lastHeartbeatAt: isoNow,
+        };
+        saveConfig({ ...cfg, _activeSpan: span });
+        return {
+          content: [{ type: "text", text: `📍 已开始「${span.eventName}」${span.note ? `（${span.note}）` : ""}。\n全局提示词会持续注入「已 N 分钟」提醒你。结束请调 pition_span action=end。` }],
+          details: { action: "start", span },
+        };
+      }
+
+      if (params.action === "heartbeat") {
+        if (!cfg._activeSpan) throw new Error("没有进行中的 span 可以 heartbeat——先 action=start");
+        const updated: ActiveSpan = {
+          ...cfg._activeSpan,
+          note: params.note ?? cfg._activeSpan.note,
+          lastHeartbeatAt: isoNow,
+        };
+        saveConfig({ ...cfg, _activeSpan: updated });
+        const elapsed = Math.max(0, Math.round((now.getTime() - new Date(updated.startedAt).getTime()) / 60000));
+        return {
+          content: [{ type: "text", text: `💓 heartbeat 已记录——「${updated.eventName}」仍在进行（已 ${elapsed} 分钟）。` }],
+          details: { action: "heartbeat", span: updated },
+        };
+      }
+
+      // action === "end"
+      if (!cfg._activeSpan) throw new Error("没有进行中的 span 可以 end——直接调 pition_write 即可");
+      const span = cfg._activeSpan;
+      const started = new Date(span.startedAt);
+      const endedAt = now;
+      const elapsedMs = endedAt.getTime() - started.getTime();
+      const elapsedMin = Math.round(elapsedMs / 60000);
+      // 格式化 [HH:MM-HH:MM] 事件名（备注 / 总结）
+      const fmt = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      const head = `[${fmt(started)}-${fmt(endedAt)} 持续 ${elapsedMin} 分钟]`;
+      const finalNote = params.note ?? span.note;
+      const tailParts: string[] = [];
+      if (finalNote) tailParts.push(`（${finalNote}）`);
+      if (params.summary) tailParts.push(`— ${params.summary}`);
+      const paragraphText = `${head} ${span.eventName}${tailParts.join(" ")}`;
+
+      // 写入当前 page（不用 pition_write：时间戳由我们自己加，避免和 span head 冲突）
+      const q = await notion(null, "POST", `/v1/databases/${binding.dbId}/query`, {
+        sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
+        page_size: 1,
+      });
+      const latest = (q.results as any[])[0];
+      if (latest) {
+        await notion(null, "PATCH", `/v1/blocks/${latest.id}/children`, {
+          children: [{
+            object: "block",
+            type: "paragraph",
+            paragraph: { rich_text: [{ text: { content: paragraphText } }] },
+          }],
+        });
+      }
+      // 清除 cfg._activeSpan（end 后不再注入 span 状态）
+      const { _activeSpan, ...rest } = cfg;
+      saveConfig({ ...rest, _activeSpan: null });
+      return {
+        content: [{ type: "text", text: `✅ 「${span.eventName}」已结束（持续 ${elapsedMin} 分钟），已写入「${binding.title}」当前 page。` }],
+        details: { action: "end", span, pageId: latest?.id, paragraphText, elapsedMin },
       };
     },
   });

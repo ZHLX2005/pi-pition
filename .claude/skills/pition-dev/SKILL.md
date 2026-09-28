@@ -178,3 +178,5 @@ pi 启动
 - [[A01-设计理念]] — 引导态（`pition_boot`）的 5 阶段契约 + 助理模式开关的产品逻辑
 - [[B00-注入点架构]] — 注入点分类（Tool/Command/Event/...）的元数据与决策树
 - [[B01-注入点清单]] — 当前 pition 所有注入点的位置、行号、契约、扩展指引
+- [[C00-上下文架构]] — 全局 system prompt 注入的元数据（9 层 section + cache 风险）
+- [[C01-上下文多层结构]] — pition 当前向模型注入 system prompt 的 9 层 section 详解 + 决策树
