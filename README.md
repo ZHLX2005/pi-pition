@@ -1,6 +1,6 @@
 # pition — Notion 个人记录助手（pi 扩展）
 
-把 Notion 数据库变成 pi agent 的持久化存储。agent 通过 4 个 tool 识别对话中的记录内容，自动理解后写入你绑定的 Notion 库——**日常记录默认写到最新一条记录**（按最后编辑时间），不重复建行。
+把 Notion 数据库变成 pi agent 的持久化存储。agent 通过 5 个 tool 识别对话中的记录内容，自动理解后写入你绑定的 Notion 库——**日常记录默认写到当前 page**（`pition_write` 自动追加/合并属性，按 `appendContent` 写正文），不重复建行。
 
 不做 MCP。单用户固定 token + 自有库 + 定制 tool 语义，原生 pi 扩展更轻。
 
@@ -9,10 +9,10 @@
 | tool | 用途 |
 |---|---|
 | `pition_boot` | **元工具**：5 阶段渐进式配置（token → 选库 → 补字段说明 → 助理模式开关 → done），可被 agent 或 web 面板驱动 |
-| `pition_stores` | 列出绑定的存储与字段说明（agent 写之前的”字典”） |
-| `pition_query` | 查询记录，默认按最后编辑时间倒序，支持单字段过滤 |
-| `pition_add_entry` | 新建记录（属性 + 可选正文段落） |
-| `pition_update_latest` | **核心路径**：把属性修改/正文追加写到该库最新的记录 |
+| `pition_write` | **核心路径**：把属性修改/正文追加写到该库当前 page（自动 append 合并） |
+| `pition_read` | 读当前 page 完整内容（properties + 所有正文 block） |
+| `pition_history` | 翻旧账查 page 列表（带单字段过滤）；日常不调 |
+| `pition_create_today` | **逃生口**：定时任务挂了自己手动建 page（默认不调） |
 
 字段说明（description）来自配置，会原样出现在 `pition_stores` 的返回里——agent 靠它理解”每个字段该填什么”。
 
