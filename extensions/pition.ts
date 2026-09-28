@@ -961,14 +961,15 @@ return {
 
   // ---------- pition_span（区间事件：start / heartbeat / end）----------
   // 区间事件：start 时只记 cfg._activeSpan（不入 Notion），end 时整段拼成一条正文落到当前 page。
-  // 全局提示词会持续提示 agent「你还在跑步（已 28 分钟）」—— agent 据此调 heartbeat / end。
+  // 全局提示词的 pition_span section 会实时显示「你正在做 X，已 N 分钟（HH:MM 开始）」——
+  // 该数字由 extensions/pition.ts:446 renderSpanStatus 现算，不是占位符。agent 据此调 heartbeat / end。
   pi.registerTool({
     name: "pition_span",
     label: "Pition 区间事件",
     description: `区间事件管理（类似计时器）：记录「开始-持续-结束」的事件（开会 / 跑步 / 午休 / 写代码 / 等）。3 个 action：start=开始一段新事件（仅落 cfg，不入 Notion）；heartbeat=续约（仍在继续，agent 据此主动调）；end=收尾——把整段 [HH:MM-HH:MM 持续 N 分钟] 事件名 + 备注 拼成一条正文写入当前 page。start 时如果已有 active span，报错让 agent 先 end 旧的。`,
     promptGuidelines: [
       "用户开始/进入一个有时长的事件（「开始跑步」「开始午休」「开始开会」）→ 调 pition_span action=start（带事件名 + 可选备注）。",
-      "如果用户话里含「还在 / 仍然 / 继续 / 一直」并提到当前进行中的事 → 调 pition_span action=heartbeat（agent 据全局提示词里『已 N 分钟』自己判断需要调）。",
+      "如果用户话里含「还在 / 仍然 / 继续 / 一直」并提到当前进行中的事 → 调 pition_span action=heartbeat（agent 据全局提示词的 pition_span section 里给出的累计时长自行判断需要调，不要凭『N 分钟』这种字面量）。",
       "用户说结束 / 完成 / 出来了 / 感受 → 调 pition_span action=end（事件名 / 备注 / 感受会被合并进正文写入当前 page）。",
       "**不要**用 pition_write 写『开始跑步』或『结束跑步』这类有开始+结束的事件——用 pition_span 记录整段。",
     ],
@@ -1005,7 +1006,7 @@ return {
         };
         saveConfig({ ...cfg, _activeSpan: span });
         return {
-          content: [{ type: "text", text: `📍 已开始「${span.eventName}」${span.note ? `（${span.note}）` : ""}。\n全局提示词会持续注入「已 N 分钟」提醒你。结束请调 pition_span action=end。` }],
+          content: [{ type: "text", text: `📍 已开始「${span.eventName}」${span.note ? `（${span.note}）` : ""}。\n全局提示词的 pition_span section 会持续注入累计时长（实际数字，不是占位符）。结束请调 pition_span action=end。` }],
           details: { action: "start", span },
         };
       }
