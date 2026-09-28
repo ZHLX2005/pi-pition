@@ -92,7 +92,7 @@ function loadConfig(): PitionConfig | null {
     if (!currentBindingId || !bindings[currentBindingId]) {
       currentBindingId = Object.keys(bindings)[0] ?? null;
     }
-    return { token: raw.token, bindings, currentBindingId, _assistantMode: raw._assistantMode };
+    return { token: raw.token, bindings, currentBindingId, _assistantMode: raw._assistantMode, _activeSpan: raw._activeSpan ?? null };
   } catch {
     // 无配置或非法 JSON
   }
