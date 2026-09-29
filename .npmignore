@@ -1,0 +1,18 @@
+# 开发期脚本不进发布包
+scripts/
+.github/
+.claude/
+node_modules/
+package-lock.json
+
+# 本地配置（含 token）
+pition.config.json
+pition.config.local.json
+
+# 开发期产物
+*.local.mjs
+boot-set-mode-check.mjs
+diag-*.mjs
+wizard-check.mjs
+install-all.mjs
+e2e-agent.mjs
