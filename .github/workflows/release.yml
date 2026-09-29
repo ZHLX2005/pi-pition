@@ -48,13 +48,15 @@ jobs:
             exit 1
           fi
 
-      # 在这里 npm token 通过 NODE_AUTH_TOKEN secret 注入；
-      # secret 在 repo Settings → Secrets → Actions 里配（值 = npm 自动 token）
+      # 在这里 npm token 通过 NPM_TOKEN secret 注入；
+      # secret 在 repo Settings → Secrets → Actions 里配（值 = npm 自动 token）。
+      # NODE_AUTH_TOKEN 在新版 npm 下不被识别，必须写进 ~/.npmrc。
       - name: Publish to npm
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm i -g npm@latest
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
           npm publish --ignore-scripts --provenance --access public
 
   github-release:
