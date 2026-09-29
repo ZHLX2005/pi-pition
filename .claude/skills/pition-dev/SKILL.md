@@ -5,17 +5,18 @@ description: pition 项目（Notion 个人记录助手，pi coding agent 扩展�
 
 # pition 开发指南
 
-pition 把 Notion 数据库变成 pi agent 的持久化存储：agent 通过 4 个 tool 识别对话中的记录内容并自动写入。不依赖 nx-as 源码，自包含成包，通过 `~/.pi/agent/settings.json` 的 `packages` 声明或 `install.mjs` 物化两种方式安装。
+pition 把 Notion 数据库变成 pi agent 的持久化存储：agent 通过 6 个 tool 识别对话中的记录内容并自动写入。不依赖 nx-as 源码，自包含成包，通过 `~/.pi/agent/settings.json` 的 `packages` 声明或 `install.mjs` 物化两种方式安装。
 
 ## Tool 一览
 
 | tool | 用途 | 要点 |
 | --- | --- | --- |
 | `pition_boot` | **元工具**：5 阶段渐进式配置（token → 选库 → 补字段说明 → 助理模式开关 → done） | 引导态统一入口；任意阶段可中断；agent 自动化时一次性提交 `fieldDescriptions` 替代逐字段 TUI 输入；助理模式开关走落盘（等价 /pition-mode 命令）。详见 [[A01-设计理念]] |
-| `pition_stores` | 列出绑定库 + 字段说明 | **配置里的字段 description 原样进返回**，是 agent 理解字段语义的核心 |
-| `pition_query` | 时间倒序查询 | `sorts: [{timestamp: "last_edited_time", direction: "descending"}]`，支持单字段过滤 |
-| `pition_add_entry` | 新建记录 | 属性 + 正文段落（`\n\n` 分段转 paragraph blocks） |
-| `pition_update_latest` | 写最新记录 | **日常主路径**：先 query 取最新 page，再 PATCH 属性 / append 块 |
+| `pition_write` | **日常主路径**：改当前 page 属性 + 追加正文 | 属性默认 append 合并（multi_select union / number 累加 / rich_text 拼接 / date 取更早 / checkbox 取 OR）；`overwrite: true` 显式覆盖；返回 todaySoFar 整页预览 |
+| `pition_read` | 读当前 page 完整内容 | properties + 所有正文 block |
+| `pition_history` | 翻旧账查 page 列表 | 带单字段 filter；日常不调 |
+| `pition_create_today` | 逃生口：手动建 page | 默认不调——page 由 Notion 定时任务管，returned warning 时才用 |
+| `pition_span` | **区间事件** start/heartbeat/end | start 仅落 cfg._activeSpans（支持并行多事件）；end 才把 `[HH:MM-HH:MM 持续 N 分钟]` 写入当前 page；进行中由 before_agent_start 注入 `sections.pition_span` |
 
 ### `pition_boot` 调用契约
 
@@ -55,7 +56,7 @@ pition 把 Notion 数据库变成 pi agent 的持久化存储：agent 通过 4 �
 pition/
 ├── index.ts               # 包入口（pi 包形式加载认包根 index.ts）
 ├── extensions/
-│   └── pition.ts          # 扩展实现：loadConfig + /pition 向导 + 4 个 registerTool
+│   └── pition.ts          # 扩展实现：loadConfig + /pition 向导 + 6 个 registerTool
 ├── pition.config.json     # 配置：token / bindings / 字段 description（数据与代码分离）
 ├── install.mjs            # 物化到 <agent-dir>/extensions/（nx-as 形态）
 ├── smoke-load.mjs         # jiti 冒烟（fake pi 数注册的 tool + 命令）
@@ -90,7 +91,7 @@ pi 启动
      └─ 目录形式 → resolveExtensionEntries() 优先认包根 index.ts → 视为单一扩展
          └─ jiti 加载 index.ts → re-export ./extensions/pition.ts（.ts 后缀！）
              └─ 执行工厂 → loadConfig() 两级查找（extensions/ → 包根）
-                 └─ 有 token + bindings → 注册 4 个 tool
+                 └─ 6 个 tool 全部【无条件】注册（无工厂期门禁）
                      └─ 任一环节静默失败 = 0 工具、0 报错
 ```
 
@@ -117,7 +118,8 @@ pi 启动
     }
   },
   "currentBindingId": "32位库id",        // 当前默认操作的库（agent 日常 tool 都用这个）
-  "_assistantMode": false                // 可选：助理模式开关（pition_boot stage=set_mode 或 /pition-mode 切换）
+  "_assistantMode": false,               // 可选：助理模式开关（pition_boot stage=set_mode 或 /pition-mode 切换）
+  "_activeSpans": []                     // 可选：进行中的区间事件数组（pition_span start 写入，end 移除）
 }
 ```
 
@@ -134,10 +136,10 @@ pi 启动
 ## 开发工作流
 
 1. 改 `extensions/pition.ts` 或配置
-2. `node smoke-load.mjs` — jiti 冒烟，确认 4 个 tool + `/pition` 命令注册
+2. `npm run check` — lint + typecheck + jiti 冒烟三门（smoke-load.mjs 验 6 tool + 2 命令 + boot 5 阶段契约）
 3. `node diag-session.mjs` — 三查：extensions 数组含 pition、errors 为 0、tools keys 含 4 个 pition_*
 4. 改向导逻辑时跑 `node wizard-check.mjs` — 真 token 验证列表库/schema/可写字段过滤
-5. 真模型 E2E：`pi -p "调用 pition_stores 列出我的存储" -t "pition_stores,pition_query,pition_add_entry,pition_update_latest"`（在任一项目目录，走用户 pi 配置）
+5. 真模型 E2E：`PI_E2E_BASE_URL=... PI_E2E_TOKEN=... node scripts/dev/e2e-agent.mjs`（或 `pi -p "记一下今天跑了 5 公里"` 走用户 pi 配置）
 6. 交互式向导实测：在 pi TUI 里跑 `/pition`（打印模式不触发命令）
 7. 部署到 nx-as 形态：`node install.mjs`（装到 `~/.nx-as/pi-agent/extensions/`）
 
@@ -147,7 +149,7 @@ pi 启动
 
 | 坑 | 表现 | 根因 / 预防 |
 | --- | --- | --- |
-| 工厂 early-return | 0 工具注册、零报错 | loadConfig 返回 null 时 `return`——配置缺失必须有可见警告 |
+| **工厂期 cfg 门禁**（最严重） | 会话中现配的库看不到运行态 tool，必须 /reload | `pi.registerTool` 只在工厂执行期有效——**6 个 tool 一律无条件注册**，校验下沉到 `execute` 首行的 `currentBinding()`（抛错指引 agent 去 pition_boot）。详见 [[B01-注入点清单]] §6.4 |
 | index.ts 写 `.js` 后缀 | Cannot find module | jiti 按字面找文件，re-export 本地 `.ts` 用 `.ts` |
 | 包目录无 index.ts 就 pi install | 加载报错 | 包形式加载必须有包根入口 |
 | `Type.Record` 做 tool 参数 | MiniMax 嵌套解析坏（字段名变 `$text`） | 用 `Type.Array(Type.Object({name, value}))` 数组对 |
@@ -162,16 +164,21 @@ pi 启动
 | 配置路径写死 `dirname(import.meta.url)` | 包形态安装时读到 null，静默 0 工具 | 两级查找（本目录 → 父目录） |
 | 在 pi 源码外猜加载行为 | 反复试错浪费轮次 | 直接读 `packages/coding-agent/src/core/` 的 package-manager.ts / loader.ts |
 | curl 直接发中文 JSON body | Windows git bash 编码乱码，Notion 报 validation_error | JSON 写临时文件 `--data-binary @file`，或用 node fetch |
-| 把 `registerCommand` 放在 `loadConfig()` 之后 | 没配置时命令不注册，用户进不去向导（死锁） | 命令无条件注册，配置检查只 gate tools |
+| 在工厂里用 `loadConfig()` 结果 gate 任何注册 | 配置是在会话中现配的 → 门禁在配置之前执行 → 工具/命令缺失 | **命令和 6 个 tool 全部无条件注册**，校验下沉到 `execute` 首行 `currentBinding()` |
 | 用 `pi -p "/pition"` 验证命令 | 打印模式当普通消息发给模型，误判"命令没生效" | 交互命令只能在 TUI 里试；注册用 diag-command.mjs 验 |
+| **npm publish 返回 `+` 但服务端 404** | 误以为发布成功 | CDN 延迟 + 反钓鱼静默拒收。必须 `npm view <pkg> versions` 验证；同版本重发报 403 就 bump |
+| 新版 npm 用 `NODE_AUTH_TOKEN` | CI 报 `ENEEDAUTH` | 必须写 `~/.npmrc`（`echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc`） |
+| `biome check --write` 格式化 `pition.config.json` | 本地 token 配置被改写 | biome.json `files.includes` 里排除该文件 |
 
 ## 排查阶梯（工具不出现时，从快到慢）
 
 1. `pi list` — 包声明在不在
-2. `node diag-loader.mjs` — 发现层：包被解析成什么、有无 errors
-3. `node diag-session.mjs` — 装配层：工厂执行后 tools keys 是否为空（空 = early-return，查配置）
-4. `node diag-command.mjs` — 命令层：`/pition` 是否注册
-5. `pi -p` 真模型实测 — 模型层：schema 兼容性问题（看模型反馈的报错形态）
+2. `npm run check` — 本地三门（lint + typecheck + jiti 冒烟）；冒烟挂了就不用往下查
+3. `node scripts/dev/diag-loader.mjs` — 发现层：包被解析成什么、有无 errors
+4. `node scripts/dev/diag-session.mjs` — 装配层：工厂执行后 6 个 tool 是否都在 session tools 里
+   （如果只有 `pition_boot` 而缺其余 5 个 → 工厂里又加了 cfg 门禁，见高频坑表第一条）
+5. `node scripts/dev/diag-command.mjs` — 命令层：`/pition` + `/pition-mode` 是否注册
+6. `pi -p` 真模型实测 — 模型层：schema 兼容性问题（看模型反馈的报错形态）
 
 ## References
 

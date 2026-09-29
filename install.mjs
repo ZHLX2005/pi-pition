@@ -45,14 +45,23 @@ if (!cfg.token || typeof cfg.token !== "string") {
   console.error("✗ 配置缺少 token（Notion integration token，ntn_ 开头）");
   process.exit(1);
 }
-if (!Array.isArray(cfg.bindings)) cfg.bindings = [];
+// bindings 是 Record<dbId, Binding>（老格式数组自动归一）
+if (!cfg.bindings || typeof cfg.bindings !== "object") cfg.bindings = {};
+if (Array.isArray(cfg.bindings)) {
+  const normalized = {};
+  for (const b of cfg.bindings) if (b?.dbId) normalized[b.dbId] = b;
+  cfg.bindings = normalized;
+}
+if (!cfg.currentBindingId || !cfg.bindings[cfg.currentBindingId]) {
+  cfg.currentBindingId = Object.keys(cfg.bindings)[0] ?? null;
+}
 
 // ---- 校验绑定（本地静态检查，不联网）----
 const FIELD_TYPES = new Set([
   "title", "rich_text", "number", "select", "multi_select",
   "status", "checkbox", "date", "url", "email", "phone_number",
 ]);
-for (const b of cfg.bindings) {
+for (const b of Object.values(cfg.bindings)) {
   if (!b.dbId || !b.title) {
     console.error(`✗ 绑定缺 dbId 或 title: ${JSON.stringify(b).slice(0, 120)}`);
     process.exit(1);
@@ -75,5 +84,10 @@ writeFileSync(cfgTarget, JSON.stringify(cfg, null, 2), "utf8");
 
 console.log(`✓ 扩展:     ${extTarget}`);
 console.log(`✓ 配置:     ${cfgTarget}`);
-console.log(`  绑定存储: ${cfg.bindings.length ? cfg.bindings.map((b) => b.title).join("、") : "（无——agent 侧不会注册 pition tool）"}`);
-console.log("\n重启 nx-as serve（或 pi 会话）后生效。");
+const boundList = Object.values(cfg.bindings);
+const current = cfg.currentBindingId ? cfg.bindings[cfg.currentBindingId] : null;
+console.log(
+  `  已描述库: ${boundList.length ? boundList.map((b) => b.title).join("、") : "（无）"}` +
+    (current ? `；当前库: ${current.title}` : "；未选当前库（agent 调 pition_boot stage=select_db）"),
+);
+console.log("\n重启 pi 会话（或 nx-as serve）后生效。");
