@@ -25,7 +25,7 @@ const NETWORK_ERR_PATTERNS = [
 ];
 
 /** 退避序列：首次 + 2 次重试，共 3 次尝试 */
-export const RETRY_DELAYS_MS = [500, 1500, 4500];
+const RETRY_DELAYS_MS = [500, 1500, 4500];
 
 /** 判断错误是否属于「可重试的网络层错误」 */
 export function isNetworkError(err: unknown): boolean {

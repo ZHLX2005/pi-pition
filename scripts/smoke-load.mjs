@@ -1,7 +1,16 @@
-// 加载冒烟：模拟 pi 的 jiti loader，验证 extensions/pition.ts 能加载并注册 tool + 设置命令
-// jiti + pi 包都从仓库自身 node_modules 拿（CI 环境走 npm ci 后能 resolve），不需要硬编码绝对路径
+// 加载冒烟：模拟 pi 的 jiti loader，验证 extensions/pition.ts 能加载并注册 tool + 设置命令。
+//
+// jiti + pi 包都从仓库自身 node_modules 拿（CI 走 npm ci 后能 resolve），不硬编码路径。
+//
+// 配置隔离：通过 PITION_CONFIG 环境变量把配置路径指向**临时文件**，
+// 绝不触碰仓库里的真实 pition.config.json（此前是就地覆盖 + 事后还原，
+// 加载失败时会丢掉用户的真 token）。
+//
+// 为什么要写临时配置：tool 注册虽然不依赖配置（无条件注册），但工厂里 bootCtx
+// 等运行态信息要读 cfg。给一份最小配置让加载路径完整走通。
 
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti";
@@ -21,10 +30,9 @@ const jiti = createJiti(import.meta.url, {
 
 const extPath = `file:///${join(here, "extensions", "pition.ts").replace(/\\/g, "/")}`;
 
-// CI 环境没有 pition.config.json → factory 早返只注册 boot 不注册运行态 tool。
-// 临时写一个最小 cfg（覆盖真 cfg；跑完即还原）让 jiti 走完整 registerTool 路径。
-const configPath = join(here, "pition.config.json");
-const realCfgBackup = existsSync(configPath) ? readFileSync(configPath, "utf8") : null;
+// 在临时目录放一份最小配置，并用 PITION_CONFIG 指过去 —— 真实配置全程不被读写。
+const smokeDir = mkdtempSync(join(tmpdir(), "pition-smoke-"));
+const configPath = join(smokeDir, "pition.config.json");
 writeFileSync(
   configPath,
   JSON.stringify(
@@ -34,9 +42,7 @@ writeFileSync(
         "smoke-db-id-0000": {
           dbId: "smoke-db-id-0000",
           title: "smoke",
-          fields: {
-            Name: { type: "title", description: "smoke" },
-          },
+          fields: { Name: { type: "title", description: "smoke" } },
         },
       },
       currentBindingId: "smoke-db-id-0000",
@@ -45,10 +51,8 @@ writeFileSync(
     2,
   ),
 );
-const restoreCfg = () => {
-  if (realCfgBackup !== null) writeFileSync(configPath, realCfgBackup);
-  else if (existsSync(configPath)) rmSync(configPath);
-};
+process.env.PITION_CONFIG = configPath;
+const cleanupCfg = () => rmSync(smokeDir, { recursive: true, force: true });
 
 const mod = await jiti.import(extPath);
 console.log("extension loaded, default export:", typeof mod.default);
@@ -66,7 +70,7 @@ const fakePi = {
   registerFlag: () => {},
 };
 mod.default(fakePi);
-restoreCfg();
+cleanupCfg();
 
 console.log("registered tools:");
 for (const t of tools) console.log("  -", t);
@@ -176,4 +180,5 @@ try {
   console.error(`FAIL: before_agent_start handler 抛错：${e.message}\n${e.stack}`);
   process.exit(1);
 }
+cleanupCfg();
 console.log("SMOKE PASS");

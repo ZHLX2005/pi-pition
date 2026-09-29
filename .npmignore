@@ -14,10 +14,5 @@ package-lock.json
 pition.config.json
 pition.config.local.json
 
-# 开发期产物
+# 开发期产物（scripts/ 已整目录排除，此处只兜底仓库根可能出现的临时脚本）
 *.local.mjs
-boot-set-mode-check.mjs
-diag-*.mjs
-wizard-check.mjs
-install-all.mjs
-e2e-agent.mjs

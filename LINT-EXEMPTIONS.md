@@ -9,16 +9,17 @@ biome 配置是严格 JSON（不支持注释），故豁免理由集中记在这
 **随用户自己的数据库 schema 变化**，在接入官方 SDK 之前无法静态描述。强行标注会引入
 大量错误的类型断言（断言本身也是运行时风险），反而降低安全性。
 
-**约束在哪**：`any` 只允许出现在 **IO 边界**——即
+**约束在哪**：`any` 只允许出现在 **IO 边界**——即所有直接接触 Notion API 响应、
+pi API 签名、或用户配置 JSON 的文件：
 
-- `src/notion.ts`：`fetchNotion` / `parseOrThrow` 的响应解析
-- `src/properties.ts`：`toNotionProperty` / `readPageProperties` 等 Notion 格式编解码
-- `src/databases.ts`：库 schema 读取
-- `src/wizard.ts`：`ctx` 的结构化契约
-- `extensions/pition.ts`：tool `execute` 内对响应字段的取值
+- Notion 响应解析：`src/notion.ts`、`src/properties.ts`、`src/databases.ts`
+- 用户配置 JSON：`src/config.ts`（`normalizeConfig` 的历史格式归一）
+- pi API / 对话上下文：`src/wizard.ts`、`src/role-mode.ts`、`extensions/pition.ts`
+- tool 层：`src/tools/*.ts`（对响应字段取值）
 
-**业务层（`src/config.ts` / `src/span.ts` / `src/time.ts` / `src/types.ts`）零 `any`**，
-全部走 `src/types.ts` 里收窄后的领域类型。
+**业务层零 `any`**（当前为 `src/types.ts` / `src/span.ts` / `src/time.ts` / `src/role.ts` /
+`src/boot-ctx.ts`，全部走 `src/types.ts` 里收窄后的领域类型）。**新增文件时保持这个边界**：
+新文件若需触碰外部数据，先想想是否属于上述某一层；不属于就别用 `any`。
 
 ## `noNonNullAssertion: "off"`（仅 `test/**`）
 

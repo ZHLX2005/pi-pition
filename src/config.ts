@@ -8,13 +8,22 @@ import type { ActiveSpan, Binding, PitionConfig } from "./types.ts";
 /** 配置文件名 */
 const CONFIG_FILENAME = "pition.config.json";
 
+/** 配置路径的环境变量覆盖（服务器/容器部署、smoke 测试用） */
+export const CONFIG_PATH_ENV = "PITION_CONFIG";
+
 /**
- * 配置定位：从扩展文件目录起逐级向上找 `pition.config.json`。
- * 找到即返回；都不存在则返回「包根」下的默认路径（供首次写入）。
+ * 配置定位，优先级：
+ *   1. 环境变量 `PITION_CONFIG`（显式指定，最高优先）—— 服务器/容器可挂载配置，
+ *      测试可指向临时文件而不动仓库里的真实配置
+ *   2. 从扩展文件目录起逐级向上找 `pition.config.json`（扩展目录 → 包根）
+ *   3. 都不存在 → 返回包根路径（供首次写入）
  *
  * @param fromUrl 通常是 `import.meta.url`；测试可注入自定义值。
  */
 function configPath(fromUrl: string = import.meta.url): string {
+  const override = process.env[CONFIG_PATH_ENV];
+  if (override) return override;
+
   const dir = dirname(fileURLToPath(fromUrl));
   for (const candidate of [dir, dirname(dir)]) {
     try {
