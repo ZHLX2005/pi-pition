@@ -2,7 +2,7 @@
 import { notionWith } from "./notion.ts";
 import { type FieldMeta, WRITABLE_TYPES } from "./types.ts";
 
-export interface DbOption {
+interface DbOption {
   id: string;
   title: string;
   fieldCount: number;

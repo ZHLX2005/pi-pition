@@ -5,7 +5,7 @@
 // 不使用 forceSystemPrompt —— 会导致整段替换、prompt cache miss。
 import type { PitionConfig } from "./types.ts";
 
-export interface RoleInjection {
+interface RoleInjection {
   guidelines: string[];
   sections: Record<string, string>;
 }
@@ -40,7 +40,7 @@ export function buildRoleInjections(cfg: PitionConfig): RoleInjection {
       `可用工具（按使用频率排序）：\n` +
       `- pition_write（主路径）：改当前 page 属性 + 追加正文\n` +
       `- pition_read：读当前 page 完整内容（属性 + 所有正文 block）\n` +
-      `- pition_span：区间事件 start / heartbeat / end（进行中会被自动提醒）\n` +
+      `- pition_span：区间事件 start / end（支持并行多个，进行中会被自动提醒）\n` +
       `- pition_create_today（逃生口）：定时任务挂了自己手动建 page，默认不调\n` +
       `- pition_history（翻旧账）：列 page 列表，仅在显式翻历史时调\n\n` +
       `核心行为准则：\n` +

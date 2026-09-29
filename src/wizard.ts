@@ -19,7 +19,7 @@ interface WizardCtx {
   reload(): Promise<void>;
 }
 
-export async function setupWizard(ctx: WizardCtx): Promise<void> {
+async function setupWizard(ctx: WizardCtx): Promise<void> {
   const ui = ctx.ui;
   const cfg = loadConfig() ?? { token: "", bindings: {}, currentBindingId: null };
 

@@ -56,7 +56,7 @@ export interface PitionConfig {
 }
 
 /** tool execute 返回的 details 统一类型（避免 pi 的 union 推导炸类型） */
-export type ToolDetails = Record<string, unknown>;
+type ToolDetails = Record<string, unknown>;
 
 /** 统一 details 出口：多分支返回不同 details 形状会推成 union 而炸类型，经此 helper 类型恒定 */
 export function detail(fields: ToolDetails): ToolDetails {

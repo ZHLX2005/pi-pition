@@ -30,7 +30,7 @@ export function startSpan(
   };
 }
 
-export interface EndSpanResult {
+interface EndSpanResult {
   cfg: PitionConfig;
   span: ActiveSpan;
   /** 要写进 Notion 的整段正文，如 `[14:32-15:00 持续 28 分钟] 跑步（公园）— 感觉很好` */

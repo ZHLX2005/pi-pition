@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { ActiveSpan, Binding, PitionConfig } from "./types.ts";
 
 /** 配置文件名 */
-export const CONFIG_FILENAME = "pition.config.json";
+const CONFIG_FILENAME = "pition.config.json";
 
 /**
  * 配置定位：从扩展文件目录起逐级向上找 `pition.config.json`。

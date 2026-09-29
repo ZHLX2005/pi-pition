@@ -159,7 +159,7 @@ formula / relation / rollup 等计算类字段不可写，不要放进配置。
 ## 开发
 
 ```bash
-npm run check        # 五门：lint → typecheck → test → knip → smoke（prepublishOnly 同款）
+npm run check        # 四门：lint → typecheck → test → smoke（prepublishOnly 同款）
 npm test             # vitest（单元 + 集成）
 node scripts/dev/diag-session.mjs   # SDK 会话装配诊断（需先 npm install）
 ```

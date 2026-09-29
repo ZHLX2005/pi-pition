@@ -21,14 +21,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Lint
-        run: npm run lint
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Unit & integration tests
-        run: npm run test
-      - name: Smoke-load pition via jiti
-        run: node scripts/smoke-load.mjs
+      # 单步复用聚合命令 —— 往 check 里加门，CI 自动跟着跑（避免两处漂移）
+      - name: Full check (lint + typecheck + test + smoke)
+        run: npm run check
 
   # peer 范围 floor 验证：用 pi 仓库声称的最低版本试加载
   compat-floor-pi:

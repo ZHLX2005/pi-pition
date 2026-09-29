@@ -19,7 +19,7 @@ pition 是一个 pi coding agent 扩展：把 Notion 数据库变成 agent 的�
 ## Commands
 
 ```bash
-npm run check       # 五门：lint → typecheck → test → knip → smoke（提交前必跑）
+npm run check       # 四门：lint → typecheck → test → smoke（提交前必跑）
 npm run lint:fix    # biome 自动修复
 npm test            # vitest（单元 + 集成）
 node scripts/dev/diag-session.mjs   # SDK 会话装配诊断（需先 npm install）

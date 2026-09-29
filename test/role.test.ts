@@ -43,5 +43,7 @@ describe("buildRoleInjections", () => {
     expect(all).not.toContain("pition_query");
     expect(all).not.toContain("pition_add_entry");
     expect(all).not.toContain("pition_update_latest");
+    // heartbeat 概念已废除（时长由 startedAt 现算，无需续约）
+    expect(all, "注入内容仍提及已废除的 heartbeat").not.toContain("heartbeat");
   });
 });

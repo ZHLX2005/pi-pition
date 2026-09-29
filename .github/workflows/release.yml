@@ -24,8 +24,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Smoke-load before publishing
-        run: node scripts/smoke-load.mjs
+      - name: Full check before publishing
+        run: npm run check
 
   publish-npm:
     needs: smoke
@@ -51,6 +51,8 @@ jobs:
       # 在这里 npm token 通过 NPM_TOKEN secret 注入；
       # secret 在 repo Settings → Secrets → Actions 里配（值 = npm 自动 token）。
       # NODE_AUTH_TOKEN 在新版 npm 下不被识别，必须写进 ~/.npmrc。
+      # 注：--ignore-scripts 会跳过 prepublishOnly，所以校验由上面的 smoke job（npm run check）承担。
+      # 这里只做发布本身；两处都跑 check 是重复的。
       - name: Publish to npm
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
