@@ -9,7 +9,7 @@ import { loadConfig } from "../config.ts";
 import { runBoot } from "./boot-run.ts";
 
 /** 由扩展在注册时注入的运行态钩子（避免 tool 模块反向依赖扩展闭包） */
-export interface BootHooks {
+interface BootHooks {
   /** 当前配置状态摘要，拼进 description 让 agent 一眼看到现状 */
   bootCtx: string;
   /** set_mode 改盘后同步运行态 roleState */

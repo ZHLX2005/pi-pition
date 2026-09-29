@@ -4,7 +4,7 @@
  * 不排除会让 knip 递归扫描外部代码（实测直接 OOM）。
  */
 export default {
-  entry: ["index.ts", "extensions/pition.ts", "test/**/*.test.ts", "scripts/**/*.mjs"],
+  entry: ["src/index.ts", "extensions/pition.ts", "test/**/*.test.ts", "scripts/**/*.mjs"],
   project: ["src/**/*.ts", "extensions/**/*.ts", "test/**/*.ts"],
   ignore: [".claude/**"],
   ignoreExportsUsedInFile: true,

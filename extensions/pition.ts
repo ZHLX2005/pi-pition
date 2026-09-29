@@ -11,16 +11,21 @@
 //   3. 提示词注入只用 promptGuidelines / sections，禁用 forceSystemPrompt（cache miss）
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { buildBootCtx } from "../src/boot-ctx.ts";
-import { loadConfig } from "../src/config.ts";
-import { type RoleState, registerRoleMode } from "../src/role-mode.ts";
-import { defineBootTool } from "../src/tools/boot.ts";
-import { defineCreateTodayTool } from "../src/tools/create_today.ts";
-import { defineHistoryTool } from "../src/tools/history.ts";
-import { defineReadTool } from "../src/tools/read.ts";
-import { defineSpanTool } from "../src/tools/span.ts";
-import { defineWriteTool } from "../src/tools/write.ts";
-import { registerSetupCommand } from "../src/wizard.ts";
+// 单一 import 面：pi 扩展只依赖 src/index.ts（barrel），
+// 这样内部模块怎么重组都不影响本文件，也给了 knip 一个 src 侧 entry。
+import {
+  buildBootCtx,
+  defineBootTool,
+  defineCreateTodayTool,
+  defineHistoryTool,
+  defineReadTool,
+  defineSpanTool,
+  defineWriteTool,
+  loadConfig,
+  type RoleState,
+  registerRoleMode,
+  registerSetupCommand,
+} from "../src/index.ts";
 
 export default function pitionExtension(pi: ExtensionAPI) {
   // 1. 设置命令始终注册——没有配置时这是进入向导的唯一入口
