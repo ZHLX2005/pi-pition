@@ -41,6 +41,15 @@ describe("clockPrefix / prefixClockToContent", () => {
     const when = new Date(2026, 8, 29, 8, 0);
     expect(prefixClockToContent("只有一段", when)).toBe("[08:00] 只有一段");
   });
+
+  // 回归：空白段曾误返回整段 content，导致正文被重复注入
+  it("空白段原样保留，不会触发整段重复", () => {
+    const when = new Date(2026, 8, 29, 10, 0);
+    const out = prefixClockToContent("a\n\n  \n\nb", when);
+    expect(out).toBe("[10:00] a\n\n  \n\n[10:00] b");
+    // 关键：输出里 "a" 只应出现一次（曾出现两次）
+    expect(out.split("a").length - 1).toBe(1);
+  });
 });
 
 describe("toYmd", () => {

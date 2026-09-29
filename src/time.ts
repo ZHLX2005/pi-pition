@@ -17,12 +17,17 @@ export function clockPrefix(d: Date): string {
   return `[${hh}:${mm}]`;
 }
 
-/** 给正文每段加 [HH:MM] 前缀；保留 \n\n 段分隔语义 */
+/**
+ * 给正文每段加 [HH:MM] 前缀；保留 \n\n 段分隔语义。
+ *
+ * 空白段（只含空格/换行的段）原样保留——不加前缀，也不替换成整段内容。
+ * （曾有此 bug：空段分支误返回 `content` 而非 `para`，导致整段正文被重复输出。）
+ */
 export function prefixClockToContent(content: string, when: Date): string {
   const prefix = clockPrefix(when);
   return content
     .split(/\n{2,}/)
-    .map((para) => (para.trim() ? `${prefix} ${para}` : content))
+    .map((para) => (para.trim() ? `${prefix} ${para}` : para))
     .join("\n\n");
 }
 

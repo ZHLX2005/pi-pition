@@ -1,37 +1,28 @@
-// pition_create_today 的实现：逃生口 —— 定时任务挂了时手动建当前 page。
-import { currentBinding } from "../config.ts";
-import { notion } from "../notion.ts";
-import { buildProperties, contentToBlocks } from "../properties.ts";
-import { autoFillDateProperty, prefixClockToContent, toDate } from "../time.ts";
-import { type CreateTodayParams, detail, type ToolResponse } from "../types.ts";
+// pition_create_today 的完整 tool 定义（schema + 描述 + 委托到 runCreateToday）。
+import { Type } from "typebox";
+import { runCreateToday } from "./create_today-run.ts";
+import { PROPERTY_ENTRY } from "./schemas.ts";
 
-export async function runCreateToday(params: CreateTodayParams): Promise<ToolResponse> {
-  const binding = currentBinding();
-  const when = toDate(params.timestamp);
-  const props = autoFillDateProperty(binding, params.properties, when);
-  const page = await notion(null, "POST", "/v1/pages", {
-    parent: { database_id: binding.dbId },
-    properties: buildProperties(binding, props),
-  });
-  if (params.content) {
-    const bodyText = params.prefixContent === false ? params.content : prefixClockToContent(params.content, when);
-    const blocks = contentToBlocks(bodyText);
-    await notion(null, "PATCH", `/v1/blocks/${page.id}/children`, { children: blocks });
-  }
+export function defineCreateTodayTool() {
   return {
-    content: [
-      {
-        type: "text",
-        text: `已新建当前 page 到「${binding.title}」: ${page.url}（注意：定时任务可能挂了，请检查 Notion automation）`,
-      },
+    name: "pition_create_today",
+    label: "Pition 手动新建当前 page",
+    description: `逃生口：在当前库新建一条 page。默认不调用——page 由 Notion 定时任务每天 0 点自动创建。仅当 pition_write 报「该库还没有任何 page」警告时由 agent 显式调用。properties 必须含 title 字段的值。当前库由 pition_boot stage=select_db 选定；要看当前库字段说明先调 pition_boot stage=done。`,
+    promptGuidelines: [
+      "仅当 pition_write 返回 warning「该库还没有任何 page」时调用本工具手动建条；agent 切勿主动建 page。",
     ],
-    details: detail({
-      store: binding.title,
-      pageId: page.id,
-      url: page.url,
-      timestamp: when.toISOString(),
-      prefixContent: params.prefixContent !== false,
-      escape: true,
+    parameters: Type.Object({
+      properties: Type.Array(PROPERTY_ENTRY, {
+        description: "要写的字段列表（必须含 title 类型字段的值；其它字段会按 pition_write 一样的规则自动回填",
+      }),
+      content: Type.Optional(Type.String({ description: "正文内容（纯文本段落，可多段用 \\n\\n 分隔）" })),
+      timestamp: Type.Optional(
+        Type.Union([Type.String(), Type.Number()], { description: "事件时间（ISO 或 Unix ms），默认当前时间" }),
+      ),
+      prefixContent: Type.Optional(Type.Boolean({ description: "是否给正文段首加 [HH:MM]，默认 true" })),
     }),
+    async execute(_id: string, params: any) {
+      return runCreateToday(params);
+    },
   };
 }

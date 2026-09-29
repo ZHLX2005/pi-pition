@@ -1,66 +1,32 @@
-// pition_span 的实现：区间事件 —— start 落盘、end 收尾并把整段写入当前 page。
-import { currentBinding, loadConfig, saveConfig } from "../config.ts";
-import { notion } from "../notion.ts";
-import { endSpan, startSpan } from "../span.ts";
-import { detail, type SpanParams, type ToolResponse } from "../types.ts";
+// pition_span 的完整 tool 定义（schema + 描述 + 委托到 runSpan）。
+import { Type } from "typebox";
+import { runSpan } from "./span-run.ts";
 
-export async function runSpan(params: SpanParams): Promise<ToolResponse> {
-  const binding = currentBinding();
-  const cfg = loadConfig();
-  if (!cfg) throw new Error("pition 未配置");
-
-  if (params.action === "start") {
-    // 状态机在 src/span.ts（纯函数、有单测）——这里只做落盘与文案
-    const { cfg: next, span, totalActive } = startSpan(cfg, params.eventName ?? "", params.note);
-    saveConfig(next);
-    const others = totalActive > 1 ? `（并行中还有 ${totalActive - 1} 件进行中）` : "";
-    return {
-      content: [
-        {
-          type: "text",
-          text: `📍 已开始「${span.eventName}」${span.note ? `（${span.note}）` : ""}${others}。\n全局提示词的 pition_span section 会持续注入各事件累计时长（实际数字，不是占位符）。结束请调 pition_span action=end。`,
-        },
-      ],
-      details: detail({ action: "start", span, totalActive }),
-    };
-  }
-
-  // action === "end"：状态机算出正文，这里负责写 Notion + 落盘
-  const result = endSpan(cfg, params.eventName, params.note, params.summary);
-  const q = await notion(null, "POST", `/v1/databases/${binding.dbId}/query`, {
-    sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
-    page_size: 1,
-  });
-  const latest = (q.results as any[])[0];
-  if (latest) {
-    await notion(null, "PATCH", `/v1/blocks/${latest.id}/children`, {
-      children: [
-        {
-          object: "block",
-          type: "paragraph",
-          paragraph: { rich_text: [{ text: { content: result.paragraphText } }] },
-        },
-      ],
-    });
-  }
-  saveConfig(result.cfg);
-  const stillActive = result.stillActive.length
-    ? `（仍在进行：${result.stillActive.map((s) => `「${s.eventName}」`).join("、")}）`
-    : "";
+export function defineSpanTool() {
   return {
-    content: [
-      {
-        type: "text",
-        text: `✅ 「${result.span.eventName}」已结束（持续 ${result.elapsedMin} 分钟），已写入「${binding.title}」当前 page。${stillActive}`,
-      },
+    name: "pition_span",
+    label: "Pition 区间事件",
+    description: `区间事件管理（类似计时器，支持并行多个）：记录「开始-持续-结束」的事件（开会 / 跑步 / 午休 / 写代码 / 等）。2 个 action：start=开始一段新事件（仅落 cfg，不入 Notion；可同时进行多件事）；end=收尾——把整段 [HH:MM-HH:MM 持续 N 分钟] 事件名 + 备注 拼成一条正文写入当前 page（eventName 精确匹配；省略时若只有一个进行中的 span 则收尾它，多个时报错列出全部）。累计时长由全局提示词的 pition_span section 自动现算注入，无需手动续约。`,
+    promptGuidelines: [
+      "用户开始/进入一个有时长的事件（「开始跑步」「开始午休」「开始开会」）→ 调 pition_span action=start（带事件名 + 可选备注）。用户开始新事件时**不要**要求先结束旧事件——事件可并行。",
+      "进行中的事件（可能多件）会自动出现在全局提示词的 pition_span section（实际时长数字，每次对话自动更新），不需要也不存在 heartbeat 调用。",
+      "用户说结束 / 完成 / 出来了 / 感受 → 调 pition_span action=end（带 eventName 精确收尾那件事；事件名 / 备注 / 感受会被合并进正文写入当前 page）。",
+      "**不要**用 pition_write 写『开始跑步』或『结束跑步』这类有开始+结束的事件——用 pition_span 记录整段。",
     ],
-    details: detail({
-      action: "end",
-      span: result.span,
-      pageId: latest?.id,
-      paragraphText: result.paragraphText,
-      elapsedMin: result.elapsedMin,
-      stillActive: result.stillActive,
+    parameters: Type.Object({
+      action: Type.Union([Type.Literal("start"), Type.Literal("end")], {
+        description: "start=开新 span（可并行）；end=收尾指定 span 并写入 Notion",
+      }),
+      eventName: Type.Optional(
+        Type.String({
+          description: "事件名（action=start 必填；action=end 按事件名精确收尾，省略时仅一个 span 才行）",
+        }),
+      ),
+      note: Type.Optional(Type.String({ description: "可选备注（action=start 时设定；end 时可补充感受/收尾说明）" })),
+      summary: Type.Optional(Type.String({ description: "action=end 时可选：事后总结/感受/结果，合并进正文" })),
     }),
+    async execute(_id: string, params: any) {
+      return runSpan(params);
+    },
   };
 }
