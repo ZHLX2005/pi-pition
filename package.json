@@ -1,6 +1,6 @@
 {
   "name": "@flowot/pi-pition",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Notion 个人记录助手 — 把 Notion 数据库变成 pi agent 的持久化存储（page列表透明、属性追加合并、区间事件记录、5阶段引导配置）。",
   "type": "module",
   "keywords": [
@@ -55,7 +55,7 @@
     "smoke": "node smoke-load.mjs",
     "lint": "biome check extensions/ index.ts",
     "lint:fix": "biome check --write extensions/ index.ts",
-    "check": "npm run smoke",
+    "check": "npm run lint && npm run typecheck && npm run smoke",
     "prepublishOnly": "npm run check"
   },
   "publishConfig": {

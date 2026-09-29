@@ -1,8 +1,21 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
-  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
   "files": {
-    "ignoreUnknown": true
+    "ignoreUnknown": true,
+    "includes": [
+      "extensions/**/*.ts",
+      "index.ts",
+      "scripts/**/*.mjs",
+      "*.mjs",
+      "*.json",
+      "!pition.config.json",
+      "!pition.config.local.json"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -13,7 +26,10 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true
+      "recommended": true,
+      "suspicious": {
+        "noExplicitAny": "off"
+      }
     }
   },
   "javascript": {

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-29
+
+### Added
+
+- **质量门全绿**：`npm run check` = biome lint + `tsc --noEmit` + jiti 冒烟，三者均为 0 失败；CI 与 `prepublishOnly` 走同一套。
+- `detail()` 统一 details 出口（`Record<string, unknown>`），消除 pi `registerTool` 的 union 类型推导爆炸。
+- README 重写：安装改以 `pi install npm:@flowot/pi-pition` 为主，补 6 tool 全表、属性 append 语义矩阵、`pition_span` 区间事件说明。
+
+### Fixed
+
+- `/pition` 向导与 `/pition-mode` 残留的旧 `bindings: []` 数组形态 → `Record<dbId, Binding>` + `currentBindingId`。
+- 删除死代码 `fieldsDoc`（字段说明已改由 `pition_boot stage=done` 提供）。
+- biome 配置排除 `pition.config.json`（本地 token 文件不应被格式化器改写）。
+
 ## [0.2.0] - 2026-09-29
 
 ### Changed
