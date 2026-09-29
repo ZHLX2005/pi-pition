@@ -11,6 +11,9 @@ dist/
 pition.config.json
 pition.config.local.json
 
+# 临时文件（消息草稿 / 抽取中间产物）
+.tmp-*
+
 # OS junk
 .DS_Store
 Thumbs.db
