@@ -716,19 +716,16 @@ export default function pitionExtension(pi: ExtensionAPI) {
     },
   });
 
-  // 运行态 tool 注册前置条件：cfg 存在 + 选了 binding。
-  // 注：cfg 在 execute 时由 currentBinding() 重读，不依赖启动时闭包——避免切库后所有 tool 仍查旧库。
-  const snapshotCfg = roleState.cfg;
-  if (!snapshotCfg || snapshotCfg.currentBindingId === undefined || !snapshotCfg.bindings[snapshotCfg.currentBindingId]) return;
-
-  // ---------- pition_boot 已挪到 factory 主函数顶部（无条件注册）----------
+  // 运行态 tool 全部无条件注册——不在工厂期用 cfg 做门禁。
+// 原因：pi 的 registerTool 只在工厂执行期有效，配置完成后（pition_boot stage=select_db）
+// 无法补注册，用户必须 /reload 才看得到。而每轮会话里的配置是用户现配的，没 reload 就永远差工具。
+// 未绑定库时由 currentBinding() 在 execute 首行抛错，agent 收到后自然去调 pition_boot。
 
 // 运行态 binding 解析器：每次 tool execute 调用都重新 loadConfig 拿 currentBindingId，
 // 不依赖启动时闭包（修复"切库后 pition_history / pition_query 仍查旧库"bug）。
-// 单库心智下 cfg.currentBindingId 是数字 index，bindings 是对象数组。
 function currentBinding(): Binding {
   const cfg = loadConfig();
-  if (!cfg) throw new Error("pition 未配置（没有 pition.config.json）");
+  if (!cfg) throw new Error("pition 未配置（没有 pition.config.json）——调 pition_boot stage=token 开始配置");
   const idx = cfg.currentBindingId;
   if (idx === undefined || idx === null || !cfg.bindings[idx]) {
     throw new Error("pition 没选当前库——调 pition_boot stage=select_db 选一个，或 stage=done 看状态");
