@@ -62,3 +62,61 @@ type ToolDetails = Record<string, unknown>;
 export function detail(fields: ToolDetails): ToolDetails {
   return fields;
 }
+
+/** pi 的 tool execute 返回形状：content（给模型看的文本）+ details（结构化，UI/状态用） */
+export interface ToolResponse {
+  content: Array<{ type: "text"; text: string }>;
+  details: ToolDetails;
+}
+
+/** 属性条目（pition_write / pition_create_today 共用） */
+export interface PropertyEntry {
+  name: string;
+  value: string | number | boolean;
+  /** true=整段覆盖；缺省=false 按字段类型 append 合并 */
+  overwrite?: boolean;
+}
+
+/** pition_boot 的参数 */
+export interface BootParams {
+  stage: "token" | "select_db" | "describe_fields" | "set_mode" | "done";
+  token?: string;
+  dbId?: string;
+  fieldDescriptions?: Array<{ name: string; description: string }>;
+  bindingDescription?: string;
+  bindingTitle?: string;
+  enabled?: boolean;
+}
+
+/** pition_write 的参数 */
+export interface WriteParams {
+  properties?: PropertyEntry[];
+  appendContent?: string;
+  timestamp?: string | number;
+  prefixTimestamp?: boolean;
+}
+
+/** pition_create_today 的参数 */
+export interface CreateTodayParams {
+  properties: PropertyEntry[];
+  content?: string;
+  timestamp?: string | number;
+  prefixContent?: boolean;
+}
+
+/** pition_read 的参数（当前无参数；pi 对空 schema 传 object，保持签名一致以便将来扩展） */
+export type ReadParams = object;
+
+/** pition_history 的参数 */
+export interface HistoryParams {
+  limit?: number;
+  filter?: { field: string; op: "equals" | "contains"; value: string | number | boolean };
+}
+
+/** pition_span 的参数 */
+export interface SpanParams {
+  action: "start" | "end";
+  eventName?: string;
+  note?: string;
+  summary?: string;
+}

@@ -18,22 +18,18 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-// ---- src/ 模块（按职责分层，见 src/ 目录）----
-import { currentBinding, currentSpans as currentSpansFrom, loadConfig, saveConfig } from "../src/config.ts";
-import { listDatabases } from "../src/databases.ts";
-import { notion, notionWith } from "../src/notion.ts";
-import {
-  blocksToText,
-  buildProperties,
-  contentToBlocks,
-  mergeProperties,
-  readPageProperties,
-} from "../src/properties.ts";
+// ---- src/ 模块（按职责分层）----
+import { currentSpans, loadConfig, saveConfig } from "../src/config.ts";
 import { buildRoleInjections } from "../src/role.ts";
-import { endSpan, renderSpansStatus, startSpan } from "../src/span.ts";
-import { autoFillDateProperty, prefixClockToContent, toDate } from "../src/time.ts";
-import type { Binding, FieldMeta, PitionConfig } from "../src/types.ts";
-import { detail, WRITABLE_TYPES } from "../src/types.ts";
+import { renderSpansStatus } from "../src/span.ts";
+// ---- tool 实现（每个 tool 一个模块，本文件只做注册与委托）----
+import { runBoot } from "../src/tools/boot.ts";
+import { runCreateToday } from "../src/tools/create_today.ts";
+import { runHistory } from "../src/tools/history.ts";
+import { runRead } from "../src/tools/read.ts";
+import { runSpan } from "../src/tools/span.ts";
+import { runWrite } from "../src/tools/write.ts";
+import type { PitionConfig } from "../src/types.ts";
 import { registerSetupCommand } from "../src/wizard.ts";
 
 const PROPERTY_ENTRY = Type.Object(
@@ -93,7 +89,7 @@ function registerRoleMode(pi: ExtensionAPI, state: RoleState): void {
       }
     }
     // 2) 进行中 span 上下文注入 —— 独立于助理模式（即使助理模式关，span 状态也要可见）
-    const spans = currentSpansFrom();
+    const spans = currentSpans();
     if (spans.length) {
       event.systemPromptOptions.sections.pition_span = renderSpansStatus(spans, new Date());
     }
@@ -179,7 +175,7 @@ export default function pitionExtension(pi: ExtensionAPI) {
       "用户首次使用 pition 时，按 done → token（已有 token 则跳过）→ select_db → describe_fields → set_mode → done 顺序推进。",
       "用户只改某一阶段的产物时，直接调对应 stage（不必从 token 重走）。",
       "切空间（换库）调 stage=select_db 重新选，**之前库的字段 desc 不会丢**，会在 settings 里自动按 dbId 保留。",
-      "boot 完成后，用户的实际写入意图应走 pition_write/pition_read/pition_history/pition_query，不要再用 pition_boot。",
+      "boot 完成后，用户的实际写入意图应走 pition_write/pition_read/pition_history/pition_span，不要再用 pition_boot。",
     ],
     parameters: Type.Object({
       stage: Type.Union(
@@ -220,243 +216,12 @@ export default function pitionExtension(pi: ExtensionAPI) {
       ),
     }),
     async execute(_id, params) {
-      const cfgNow = loadConfig() ?? { token: "", bindings: {}, currentBindingId: null };
-
-      if (params.stage === "token") {
-        const existingToken = cfgNow.token || "";
-        if (params.token) {
-          const t = params.token.trim();
-          if (!t) throw new Error("token 不能为空");
-          try {
-            await notionWith(t, "GET", "/v1/users/me");
-          } catch (e) {
-            throw new Error(`token 无效: ${(e as Error).message}`);
-          }
-          saveConfig({ ...cfgNow, token: t });
-          const bindingsCount = Object.keys(cfgNow.bindings).length;
-          return {
-            content: [
-              {
-                type: "text",
-                text: `token 已替换并落盘（已绑定 ${bindingsCount} 个库）。下一步：stage=select_db 列库选择。`,
-              },
-            ],
-            details: detail({ stage: "token", action: "replaced", bindings: bindingsCount }),
-          };
-        }
-        if (existingToken) {
-          const masked = `${existingToken.slice(0, 8)}...${existingToken.slice(-4)}`;
-          let dbCount = 0;
-          try {
-            dbCount = (await listDatabases(existingToken)).length;
-          } catch {
-            /* token 失效不致命 */
-          }
-          const bindingsCount = Object.keys(cfgNow.bindings).length;
-          return {
-            content: [
-              {
-                type: "text",
-                text: `pition.config.json 已落盘 token（${masked}），无需重传。可访问库数：${dbCount}（0=token 失效或没把库「连接」到这个 integration）。\n\n下一步：\n- 当前库: ${cfgNow.currentBindingId ? cfgNow.bindings[cfgNow.currentBindingId].title : "（未选）"} → 调 stage=describe_fields 或 stage=done 查看/补字段说明\n- 切空间/换库 → stage=select_db（之前所有库的字段 desc 按 dbId 保留，不丢）\n- 换 token → 再调 stage=token 时显式传新 token 参数\n- 助理模式开关 → stage=set_mode`,
-              },
-            ],
-            details: detail({
-              stage: "token",
-              action: "already_set",
-              tokenSet: true,
-              tokenMasked: masked,
-              accessibleDbs: dbCount,
-              bindings: bindingsCount,
-            }),
-          };
-        }
-        throw new Error(
-          "stage=token 必须传 token（pition.config.json 没有现存 token）。请用户提供 ntn_... 格式的 Notion integration token。",
-        );
-      }
-
-      if (params.stage === "select_db") {
-        const token = cfgNow.token;
-        if (!token) throw new Error("尚未落盘 token，请先 stage=token");
-        const dbs = await listDatabases(token);
-        if (!dbs.length)
-          throw new Error("该 token 看不到任何库——请在 Notion 里把目标库「连接」到这个 integration 后重试");
-        // 一次性绑定/切换：用户/agent 选定后下一次调用 stage=describe_fields 时带 dbId
-        if (!params.dbId) {
-          const list = dbs.map((d) => ({
-            id: d.id,
-            title: d.title,
-            fieldCount: d.fieldCount,
-            known: !!cfgNow.bindings[d.id],
-            currentDescription: cfgNow.bindings[d.id]
-              ? `${Object.values(cfgNow.bindings[d.id].fields).filter((f) => f.description).length}/${Object.keys(cfgNow.bindings[d.id].fields).length}`
-              : null,
-          }));
-          return {
-            content: [
-              {
-                type: "text",
-                text:
-                  `可选库 ${list.length} 个:\n` +
-                  list
-                    .map(
-                      (d) =>
-                        `  - ${d.title} (id=${d.id}, ${d.fieldCount} 字段)${d.known ? ` [已描述过：字段覆盖率 ${d.currentDescription}]` : " [未描述]"}`,
-                    )
-                    .join("\n") +
-                  `\n\n下一步：选定库后调 pition_boot stage=describe_fields dbId=<id> fieldDescriptions=[{name,description},...]\n或直接 pition_boot stage=describe_fields dbId=<id>（会接管现有 desc）。`,
-              },
-            ],
-            details: detail({ stage: "select_db", databases: list }),
-          };
-        }
-        // 显式传 dbId：直接接管（保留已有 desc）+ 切换 currentBindingId
-        const dbMeta = await notionWith(token, "GET", `/v1/databases/${params.dbId}`);
-        const dbTitle = (dbMeta.title ?? []).map((t: any) => t.plain_text).join("") || "(无标题)";
-        const knownFields = cfgNow.bindings[params.dbId]?.fields ?? {};
-        const merged: Record<string, FieldMeta> = {};
-        for (const [n, p] of Object.entries(dbMeta.properties ?? {})) {
-          const type = (p as any).type as string;
-          if ((WRITABLE_TYPES as readonly string[]).includes(type))
-            merged[n] = knownFields[n] ?? { type, description: "" };
-        }
-        const newBinding: Binding = {
-          dbId: params.dbId,
-          title: dbTitle,
-          description: cfgNow.bindings[params.dbId]?.description ?? "",
-          fields: merged,
-        };
-        const bindings = { ...cfgNow.bindings, [params.dbId]: newBinding };
-        saveConfig({ ...cfgNow, bindings, currentBindingId: params.dbId });
-        return {
-          content: [
-            {
-              type: "text",
-              text: `已切换当前库为「${newBinding.title}」（id=${params.dbId}），字段类型已自动加载（${Object.keys(merged).length} 个），description 沿用之前的（无 desc 则空）。下一步：stage=describe_fields 补 description。`,
-            },
-          ],
-          details: detail({ stage: "select_db", bound: true, dbId: params.dbId, title: newBinding.title }),
-        };
-      }
-
-      if (params.stage === "describe_fields") {
-        const token = cfgNow.token;
-        if (!token) throw new Error("尚未落盘 token，请先 stage=token");
-        // 不传 dbId 时默认改当前库
-        const targetId = params.dbId ?? cfgNow.currentBindingId;
-        if (!targetId) throw new Error("stage=describe_fields 必须传 dbId 或先 stage=select_db 选定当前库");
-        const prev = cfgNow.bindings[targetId];
-        if (!prev) throw new Error(`库「${targetId}」未在 cfg.bindings 里；先 stage=select_db 选定`);
-
-        if (!params.fieldDescriptions?.length) {
-          // 不传 fieldDescriptions → 仅显示当前库覆盖率
-          const covered = Object.values(prev.fields).filter((f) => f.description).length;
-          const total = Object.keys(prev.fields).length;
-          return {
-            content: [
-              {
-                type: "text",
-                text: `库「${prev.title}」当前覆盖率 ${covered}/${total}\n  已覆盖: ${
-                  Object.entries(prev.fields)
-                    .filter(([, m]) => m.description)
-                    .map(([n, m]) => `${n}(${m.type})`)
-                    .join(", ") || "无"
-                }\n  待补: ${
-                  Object.entries(prev.fields)
-                    .filter(([, m]) => !m.description)
-                    .map(([n, m]) => `${n}(${m.type})`)
-                    .join(", ") || "无"
-                }`,
-              },
-            ],
-            details: detail({
-              stage: "describe_fields",
-              action: "report",
-              dbId: targetId,
-              title: prev.title,
-              coverage: `${covered}/${total}`,
-            }),
-          };
-        }
-
-        const validNames = new Set(Object.keys(prev.fields));
-        const merged: Record<string, FieldMeta> = { ...prev.fields };
-        const skipped: string[] = [];
-        for (const fd of params.fieldDescriptions) {
-          if (!validNames.has(fd.name)) {
-            skipped.push(fd.name);
-            continue;
-          }
-          merged[fd.name] = { ...prev.fields[fd.name], description: fd.description };
-        }
-        if (skipped.length === params.fieldDescriptions.length)
-          throw new Error(`fieldDescriptions 全部不在库 schema 里：${skipped.join(", ")}`);
-
-        const newBinding: Binding = {
-          ...prev,
-          description: params.bindingDescription?.trim() || prev.description || "",
-          title: params.bindingTitle?.trim() || prev.title,
-          fields: merged,
-        };
-        const bindings = { ...cfgNow.bindings, [targetId]: newBinding };
-        saveConfig({ ...cfgNow, bindings, currentBindingId: cfgNow.currentBindingId ?? targetId });
-        const covered = Object.values(newBinding.fields).filter((f) => f.description).length;
-        const total = Object.keys(newBinding.fields).length;
-        const tail = skipped.length ? `；跳过不在 schema 里的字段：${skipped.join(", ")}` : "";
-        return {
-          content: [
-            {
-              type: "text",
-              text: `已更新库「${newBinding.title}」字段说明（覆盖率 ${covered}/${total}）${tail}。后续 pition_write/pition_read 等 tool 的字段描述已包含本次更新（下次启动或 reload 生效）。`,
-            },
-          ],
-          details: detail({
-            stage: "describe_fields",
-            action: "updated",
-            dbId: targetId,
-            title: newBinding.title,
-            coverage: `${covered}/${total}`,
-            skipped,
-          }),
-        };
-      }
-
+      // boot 的 set_mode 阶段改了 _assistantMode 落盘；运行态 roleState 由扩展同步
+      const r = await runBoot(params);
       if (params.stage === "set_mode") {
-        const next = typeof params.enabled === "boolean" ? params.enabled : !(cfgNow._assistantMode ?? false);
-        saveConfig({ ...cfgNow, _assistantMode: next });
-        setRoleMode(next);
-        return {
-          content: [
-            {
-              type: "text",
-              text: `pition 助理模式：${next ? "已开启（每次模型请求会注入个人管理助手定位）" : "已关闭（恢复默认 pi 行为）"}（已落盘，重启 pi 保留）。可用 stage=done 再次查询。`,
-            },
-          ],
-          details: detail({ stage: "set_mode", assistantMode: next }),
-        };
+        setRoleMode(loadConfig()?._assistantMode ?? false);
       }
-
-      // stage === "done"
-      const currentBinding = cfgNow.currentBindingId ? cfgNow.bindings[cfgNow.currentBindingId] : null;
-      const covered = currentBinding ? Object.values(currentBinding.fields).filter((f) => f.description).length : 0;
-      const total = currentBinding ? Object.keys(currentBinding.fields).length : 0;
-      const knownIds = Object.keys(cfgNow.bindings);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `pition 当前状态：\n- token: ${cfgNow.token ? `已落盘（${cfgNow.token.slice(0, 8)}...${cfgNow.token.slice(-4)}）` : "未设置"}\n- 当前库: ${currentBinding ? `「${currentBinding.title}」${currentBinding.description ? `（${currentBinding.description}）` : ""}，字段覆盖率 ${covered}/${total}` : "（未选）"}\n- 助理模式: ${cfgNow._assistantMode ? "开" : "关"}\n- 已描述过的库（dbId 维度）: ${knownIds.length} 个`,
-          },
-        ],
-        details: detail({
-          stage: "done",
-          tokenSet: !!cfgNow.token,
-          currentBindingId: cfgNow.currentBindingId,
-          currentBinding: currentBinding ?? undefined,
-          knownBindings: knownIds,
-          assistantMode: !!(cfgNow._assistantMode ?? false),
-        }),
-      };
+      return r;
     },
   });
 
@@ -488,34 +253,7 @@ export default function pitionExtension(pi: ExtensionAPI) {
       prefixContent: Type.Optional(Type.Boolean({ description: "是否给正文段首加 [HH:MM]，默认 true" })),
     }),
     async execute(_id, params) {
-      const binding = currentBinding();
-      const when = toDate(params.timestamp);
-      const props = autoFillDateProperty(binding, params.properties, when);
-      const page = await notion(null, "POST", "/v1/pages", {
-        parent: { database_id: binding.dbId },
-        properties: buildProperties(binding, props),
-      });
-      if (params.content) {
-        const bodyText = params.prefixContent === false ? params.content : prefixClockToContent(params.content, when);
-        const blocks = contentToBlocks(bodyText);
-        await notion(null, "PATCH", `/v1/blocks/${page.id}/children`, { children: blocks });
-      }
-      return {
-        content: [
-          {
-            type: "text",
-            text: `已新建当前 page 到「${binding.title}」: ${page.url}（注意：定时任务可能挂了，请检查 Notion automation）`,
-          },
-        ],
-        details: detail({
-          store: binding.title,
-          pageId: page.id,
-          url: page.url,
-          timestamp: when.toISOString(),
-          prefixContent: params.prefixContent !== false,
-          escape: true,
-        }),
-      };
+      return runCreateToday(params);
     },
   });
 
@@ -528,52 +266,8 @@ export default function pitionExtension(pi: ExtensionAPI) {
     description: `读当前库的「当前 page」（按最后编辑时间倒序取 top1，通常就是今天那条由定时任务新建的 page）的完整内容：所有 properties + 所有正文 block。agent 不该关心有几个 page、不该遍历——用 pition_history 看历史 page。当前库由 pition_boot stage=select_db 选定；要看当前库字段说明先调 pition_boot stage=done。`,
     promptGuidelines: ["用户问「今天写了什么/我刚才记了什么」时调 pition_read。"],
     parameters: Type.Object({}),
-    async execute() {
-      const binding = currentBinding();
-      const q = await notion(null, "POST", `/v1/databases/${binding.dbId}/query`, {
-        sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
-        page_size: 1,
-      });
-      const latest = (q.results as any[])[0];
-      if (!latest) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `存储「${binding.title}」还没有任何 page（warning：定时任务今天可能没建，请确认 Notion automation）。agent 可调 pition_create_today 手动建一条。`,
-            },
-          ],
-          details: detail({ store: binding.title, found: false, warning: "no_page_in_db" }),
-        };
-      }
-      const blocks = await notion(null, "GET", `/v1/blocks/${latest.id}/children?page_size=100`);
-      const props: Record<string, unknown> = {};
-      for (const [name, p] of Object.entries(latest.properties || {})) {
-        const anyProp = p as any;
-        if (anyProp.title) props[name] = anyProp.title.map((t: any) => t.plain_text).join("");
-        else if (anyProp.rich_text) props[name] = anyProp.rich_text.map((t: any) => t.plain_text).join("");
-        else if (anyProp.select) props[name] = anyProp.select?.name ?? null;
-        else if (anyProp.multi_select) props[name] = anyProp.multi_select.map((o: any) => o.name).join(", ");
-        else if (anyProp.checkbox !== undefined) props[name] = anyProp.checkbox;
-        else if (anyProp.number !== undefined) props[name] = anyProp.number;
-        else if (anyProp.date) props[name] = anyProp.date?.start ?? null;
-        else if (anyProp.status) props[name] = anyProp.status?.name ?? null;
-      }
-      const content = (blocks.results as any[])
-        .map((b) => {
-          if (b.type === "paragraph") return b.paragraph.rich_text.map((t: any) => t.plain_text).join("");
-          return null;
-        })
-        .filter(Boolean);
-      return {
-        content: [{ type: "text", text: JSON.stringify({ properties: props, blocks: content }, null, 2) }],
-        details: detail({
-          store: binding.title,
-          pageId: latest.id,
-          url: latest.url,
-          lastEdited: latest.last_edited_time,
-        }),
-      };
+    async execute(_id, params) {
+      return runRead(params);
     },
   });
 
@@ -610,78 +304,7 @@ export default function pitionExtension(pi: ExtensionAPI) {
       ),
     }),
     async execute(_id, params) {
-      const binding = currentBinding();
-      if (!params.properties && !params.appendContent) throw new Error("properties 和 appendContent 至少传一个");
-      const when = toDate(params.timestamp);
-      const q = await notion(null, "POST", `/v1/databases/${binding.dbId}/query`, {
-        sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
-        page_size: 1,
-      });
-      const latest = (q.results as any[])[0];
-      if (!latest) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `WARNING: 存储「${binding.title}」还没有任何 page——可能是定时任务没建。Agent 可调 pition_create_today 手动建一条。`,
-            },
-          ],
-          details: detail({ store: binding.title, found: false, warning: "no_page_in_db" }),
-        };
-      }
-      if (params.properties) {
-        // 需要先读 page 现有 properties 才能做 append 合并。
-        // 全部 overwrite=true 才跳过读；任一 append 都得读。
-        const needsMerge = params.properties.some((p) => !p.overwrite);
-        const snapshot = needsMerge
-          ? readPageProperties(await notion(null, "GET", `/v1/pages/${latest.id}`).then((p: any) => p.properties ?? {}))
-          : {};
-        const merged = mergeProperties(binding, snapshot, params.properties);
-        await notion(null, "PATCH", `/v1/pages/${latest.id}`, { properties: merged });
-      }
-      if (params.appendContent) {
-        const bodyText =
-          params.prefixTimestamp === false ? params.appendContent : prefixClockToContent(params.appendContent, when);
-        const blocks = contentToBlocks(bodyText);
-        await notion(null, "PATCH", `/v1/blocks/${latest.id}/children`, { children: blocks });
-      }
-      // 写入后立刻读一次 page 全部内容——返回里附 todaySoFar 让模型直接预览 + 追问
-      const [pageAfter, blocks] = await Promise.all([
-        notion(null, "GET", `/v1/pages/${latest.id}`),
-        notion(null, "GET", `/v1/blocks/${latest.id}/children?page_size=100`),
-      ]);
-      const propsSnapshot = readPageProperties(pageAfter.properties ?? {});
-      // 属性按字段说明渲染：field.type/description 加当前值——看板场景下模型拿到能直接复述
-      const propsBlock =
-        Object.entries(binding.fields)
-          .map(([name, meta]) => {
-            const v = propsSnapshot[name];
-            if (v === undefined || v === null || v === "") return null;
-            const vStr = Array.isArray(v) ? v.join(", ") : String(v);
-            return `  - ${name} (${meta.type})${meta.description ? ` — ${meta.description}` : ""}: ${vStr}`;
-          })
-          .filter(Boolean)
-          .join("\n") || "  （无）";
-      const contentBlock = blocksToText(blocks.results as any[]);
-      const todaySoFar = `属性:\n${propsBlock}\n\n正文:\n${contentBlock || "（空）"}`;
-      return {
-        content: [
-          {
-            type: "text",
-            text: `已写入「${binding.title}」当前 page: ${latest.url}\n\n—— 今日该 page 已记 ——\n${todaySoFar}`,
-          },
-        ],
-        details: detail({
-          store: binding.title,
-          pageId: latest.id,
-          url: latest.url,
-          timestamp: when.toISOString(),
-          prefixTimestamp: params.prefixTimestamp !== false,
-          todaySoFar,
-          todayProperties: propsSnapshot,
-          todayContent: contentBlock,
-        }),
-      };
+      return runWrite(params);
     },
   });
 
@@ -697,50 +320,7 @@ export default function pitionExtension(pi: ExtensionAPI) {
       filter: Type.Optional(QUERY_FILTER_SCHEMA),
     }),
     async execute(_id, params) {
-      const binding = currentBinding();
-      const body: Record<string, unknown> = {
-        sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
-        page_size: Math.min(Math.max(params.limit ?? 10, 1), 50),
-      };
-      if (params.filter) {
-        const { field, op, value } = params.filter;
-        const meta = binding.fields[field];
-        if (!meta)
-          throw new Error(
-            `存储「${binding.title}」没有字段「${field}」。可用: ${Object.keys(binding.fields).join("、")}`,
-          );
-        body.filter =
-          meta.type === "checkbox"
-            ? { property: field, checkbox: { equals: Boolean(value) } }
-            : meta.type === "number"
-              ? { property: field, number: { equals: Number(value) } }
-              : {
-                  property: field,
-                  [op === "contains" ? "rich_text" : meta.type]: {
-                    [op === "contains" ? "contains" : "equals"]: String(value),
-                  },
-                };
-      }
-      const data = await notion(null, "POST", `/v1/databases/${binding.dbId}/query`, body);
-      const rows = (data.results as any[]).map((page) => {
-        const props: Record<string, unknown> = {};
-        for (const [name, p] of Object.entries(page.properties || {})) {
-          const anyProp = p as any;
-          if (anyProp.title) props[name] = anyProp.title.map((t: any) => t.plain_text).join("");
-          else if (anyProp.rich_text) props[name] = anyProp.rich_text.map((t: any) => t.plain_text).join("");
-          else if (anyProp.select) props[name] = anyProp.select?.name ?? null;
-          else if (anyProp.multi_select) props[name] = anyProp.multi_select.map((o: any) => o.name).join(", ");
-          else if (anyProp.checkbox !== undefined) props[name] = anyProp.checkbox;
-          else if (anyProp.number !== undefined) props[name] = anyProp.number;
-          else if (anyProp.date) props[name] = anyProp.date?.start ?? null;
-          else if (anyProp.status) props[name] = anyProp.status?.name ?? null;
-        }
-        return { id: page.id, last_edited: page.last_edited_time, ...props };
-      });
-      return {
-        content: [{ type: "text", text: JSON.stringify(rows, null, 2) }],
-        details: detail({ store: binding.title, count: rows.length, page_list_kind: true }),
-      };
+      return runHistory(params);
     },
   });
 
@@ -771,64 +351,7 @@ export default function pitionExtension(pi: ExtensionAPI) {
       summary: Type.Optional(Type.String({ description: "action=end 时可选：事后总结/感受/结果，合并进正文" })),
     }),
     async execute(_id, params) {
-      const binding = currentBinding();
-      const cfg = loadConfig();
-      if (!cfg) throw new Error("pition 未配置");
-
-      if (params.action === "start") {
-        // 状态机在 src/span.ts（纯函数、有单测）——这里只做落盘与文案
-        const { cfg: next, span, totalActive } = startSpan(cfg, params.eventName ?? "", params.note);
-        saveConfig(next);
-        const others = totalActive > 1 ? `（并行中还有 ${totalActive - 1} 件进行中）` : "";
-        return {
-          content: [
-            {
-              type: "text",
-              text: `📍 已开始「${span.eventName}」${span.note ? `（${span.note}）` : ""}${others}。\n全局提示词的 pition_span section 会持续注入各事件累计时长（实际数字，不是占位符）。结束请调 pition_span action=end。`,
-            },
-          ],
-          details: detail({ action: "start", span, totalActive }),
-        };
-      }
-
-      // action === "end"：状态机算出正文，这里负责写 Notion + 落盘
-      const result = endSpan(cfg, params.eventName, params.note, params.summary);
-      const q = await notion(null, "POST", `/v1/databases/${binding.dbId}/query`, {
-        sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
-        page_size: 1,
-      });
-      const latest = (q.results as any[])[0];
-      if (latest) {
-        await notion(null, "PATCH", `/v1/blocks/${latest.id}/children`, {
-          children: [
-            {
-              object: "block",
-              type: "paragraph",
-              paragraph: { rich_text: [{ text: { content: result.paragraphText } }] },
-            },
-          ],
-        });
-      }
-      saveConfig(result.cfg);
-      const stillActive = result.stillActive.length
-        ? `（仍在进行：${result.stillActive.map((s) => `「${s.eventName}」`).join("、")}）`
-        : "";
-      return {
-        content: [
-          {
-            type: "text",
-            text: `✅ 「${result.span.eventName}」已结束（持续 ${result.elapsedMin} 分钟），已写入「${binding.title}」当前 page。${stillActive}`,
-          },
-        ],
-        details: detail({
-          action: "end",
-          span: result.span,
-          pageId: latest?.id,
-          paragraphText: result.paragraphText,
-          elapsedMin: result.elapsedMin,
-          stillActive: result.stillActive,
-        }),
-      };
+      return runSpan(params);
     },
   });
 }

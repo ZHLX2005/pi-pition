@@ -9,7 +9,8 @@ pition 是一个 pi coding agent 扩展：把 Notion 数据库变成 agent 的�
 ## Code Quality
 
 - 改代码前完整读目标文件，不要靠搜索片段做宽改动。
-- 单一文件形态（`extensions/pition.ts`）是刻意的：pi jiti 直接加载 TS 源码，无构建步骤。不要引入 dist/esbuild。
+- 无构建步骤是刻意的：pi 用 jiti 直接加载 TS 源码。不要引入 dist/esbuild。
+- **`extensions/pition.ts` 是纯注册层**（tool schema + 委托 `src/tools/`）；业务逻辑一律写进 `src/`。
 - tool 参数 schema 一律 `Type.Array(Type.Object({name, value}))` 数组对，禁 `Type.Record`（MiniMax 嵌套解析会坏）。
 - tool execute 第一行必须 `currentBinding()` 或 `loadConfig()` 重读——禁止闭包持有工厂期的 cfg（切库后 handler 会查旧库）。
 - tool 的 `description` 不写 cfg 衍生字符串（库标题/字段说明）；指引 agent 调 `pition_boot stage=done`。

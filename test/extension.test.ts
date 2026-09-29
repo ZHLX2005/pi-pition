@@ -103,4 +103,29 @@ describe("pitionExtension 装配（集成）", () => {
     const boot = tools.find((t) => t.name === "pition_boot")!;
     expect(boot.promptGuidelines.length).toBeGreaterThanOrEqual(3);
   });
+
+  // 回归防护：任何 tool 的 description / promptGuidelines / schema 描述里
+  // 都不得出现已删除的 tool 名（曾发生：boot 的 guideline 教 agent 调 pition_query）
+  it("所有 tool 的描述文本都不引用已废弃的 tool 名", () => {
+    const { pi, tools } = harness();
+    pitionExtension(pi as any);
+    const GONE = ["pition_stores", "pition_query", "pition_add_entry", "pition_update_latest"];
+    for (const t of tools) {
+      const texts = [t.description ?? "", ...(t.promptGuidelines ?? []), JSON.stringify(t.parameters ?? {})].join("\n");
+      for (const gone of GONE) {
+        expect(texts, `tool ${t.name} 的描述仍引用已删的 ${gone}`).not.toContain(gone);
+      }
+    }
+  });
+
+  // 注：「不需要也不存在 heartbeat 调用」这类**否定式**说明是允许的（它明确劝阻 agent）；
+  // 禁止的是把 heartbeat 当成一个可调用的 action/schema 值。
+  it("没有任何 tool 把已废除的 heartbeat 当作可调用 action", () => {
+    const { pi, tools } = harness();
+    pitionExtension(pi as any);
+    for (const t of tools) {
+      const schema = JSON.stringify(t.parameters ?? {});
+      expect(schema, `tool ${t.name} 的 schema 仍含 heartbeat action`).not.toContain('"heartbeat"');
+    }
+  });
 });
