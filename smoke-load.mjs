@@ -1,14 +1,17 @@
 // 加载冒烟：模拟 pi 的 jiti loader，验证 extensions/pition.ts 能加载并注册 tool + 设置命令
-import { createJiti } from "file:///D:/a_js/js_proj/nx-as/node_modules/.pnpm/jiti@2.7.0/node_modules/jiti/lib/jiti.mjs";
+// jiti + pi 包都从仓库自身 node_modules 拿（CI 环境走 npm ci 后能 resolve），不需要硬编码绝对路径
+import { createJiti } from "jiti";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const PI = "D:/a_js/js_proj/nx-as/node_modules/.pnpm/@earendil-works+pi-coding-agent@0.87.1_ws@8.21.3/node_modules/@earendil-works/pi-coding-agent";
+const piEntry = join(here, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "index.js");
+const typeboxEntry = join(here, "node_modules", "typebox", "build", "index.mjs");
+
 const jiti = createJiti(import.meta.url, {
   alias: {
-    "@earendil-works/pi-coding-agent": `${PI}/dist/index.js`,
-    typebox: "D:/a_js/js_proj/nx-as/node_modules/.pnpm/typebox@1.3.27/node_modules/typebox/build/index.mjs",
+    "@earendil-works/pi-coding-agent": piEntry,
+    typebox: typeboxEntry,
   },
 });
 
