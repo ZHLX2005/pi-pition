@@ -1,15 +1,15 @@
-// pition — Notion 个人记录助手扩展（nx-as 物化到 pi-agent/extensions/ 的自包含单文件）
+// pition — Notion 个人记录助手扩展（自包含单文件，pi 用 jiti 直接加载 TS，无构建步骤）
 //
-// nx-as 侧流程：web 面板配置 token → 选库 → 补字段描述 → 写入 pition.config.json
-// 本扩展启动时读同目录 pition.config.json，为绑定的 Notion 数据库注册 agent tool：
+// 配置：pition.config.json（token / bindings: Record<dbId, Binding> / currentBindingId）。
+// 本扩展注册 6 个 agent tool（**全部无条件注册**——配置是在会话中现配的，注册期做门禁
+// 会导致工具缺失、必须 /reload。未选库时由 execute 首行 currentBinding() 抛错指引去 pition_boot）：
 //   pition_boot        — 元配置：5 阶段渐进式配置（token → 选库 → 补字段说明 → 助理模式开关 → done）
-//   pition_write       — 写当前 page 属性 + 追加正文（日常主路径）
+//   pition_write       — 写当前 page 属性 + 追加正文（日常主路径；属性默认 append 合并）
 //   pition_read        — 读当前 page 完整内容（属性 + 所有正文 block）
-//   pition_history     — 显式查 page 列表（翻旧账时用，不是默认心智）
+//   pition_span        — 区间事件 start/heartbeat/end（支持并行多事件；进行中注入全局提示词）
 //   pition_create_today— 逃生口：定时任务挂了手动建 page（默认不调）
-//   pition_query       — 通用单字段过滤查询（备用）
-// 字段说明从 pition_stores 改为：启动时静态渲染进所有运行态 tool 的 description。
-// （单一库产品形态：cfg.bindings[0] 是默认；store 参数兼容多库。）
+//   pition_history     — 显式查 page 列表（翻旧账用，不是默认心智）
+// 字段说明：由 pition_boot stage=done 运行时返回（切库后永远最新），不静态拼进 tool description。
 //
 // 简单值约定（LLM 只填简单值，本文件负责转 Notion API 格式）：
 //   title/rich_text → 字符串；number → 数字；select/multi_select → 选项名字符串（逗号分隔则多选）；
