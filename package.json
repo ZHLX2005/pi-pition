@@ -17,10 +17,10 @@
   "author": "pition contributors",
   "repository": {
     "type": "git",
-    "url": "https://github.com/<owner>/pition.git"
+    "url": "git+https://github.com/ZHLX2005/pi-pition.git"
   },
   "bugs": {
-    "url": "https://github.com/<owner>/pition/issues"
+    "url": "https://github.com/ZHLX2005/pi-pition/issues"
   },
   "homefiles": [
     "extensions/",
