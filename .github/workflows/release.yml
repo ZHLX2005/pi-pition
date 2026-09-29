@@ -1,0 +1,71 @@
+name: Release
+
+# Tag-driven release. 流程：
+#   1. 在 master 上 bump package.json version + 写 CHANGELOG，commit
+#   2. git tag v0.x.y && git push origin v0.x.y
+# tag 必须与 package.json 的 version 完全一致，否则 publish 步骤快速失败
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # 创建 GitHub Release
+  id-token: write   # npm provenance (OIDC)
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Smoke-load before publishing
+        run: node smoke-load.mjs
+
+  publish-npm:
+    needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+
+      # tag 与 package.json version 严格匹配
+      - name: Verify tag matches package.json version
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME (=$TAG_VERSION) does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+
+      # 在这里 npm token 通过 NODE_AUTH_TOKEN secret 注入；
+      # secret 在 repo Settings → Secrets → Actions 里配（值 = npm 自动 token）
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm i -g npm@latest
+          npm publish --ignore-scripts --provenance --access public
+
+  github-release:
+    needs: publish-npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            LICENSE
+            README.md

@@ -50,6 +50,9 @@ interface PitionConfig {
   _activeSpans?: ActiveSpan[];
 }
 
+// tool execute 返回里 details 字段的统一类型——给 registerTool 显式声明避免 union 推导
+type ToolDetails = Record<string, unknown>;
+
 interface ActiveSpan {
   spanId: string;            // ulid-ish，唯一 id
   eventName: string;         // "开会"、"跑步"、"午休"

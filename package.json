@@ -1,0 +1,65 @@
+{
+  "name": "pition",
+  "version": "0.1.0",
+  "description": "Notion 个人记录助手 — 把 Notion 数据库变成 pi agent 的持久化存储（page列表透明、属性追加合并、区间事件记录、5阶段引导配置）。",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi",
+    "pi-coding-agent",
+    "notion",
+    "personal-knowledge-management",
+    "notes",
+    "journal"
+  ],
+  "license": "MIT",
+  "author": "pition contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/<owner>/pition.git"
+  },
+  "bugs": {
+    "url": "https://github.com/<owner>/pition/issues"
+  },
+  "homefiles": [
+    "extensions/",
+    "index.ts",
+    "pition.config.example.json",
+    "README.md",
+    "LICENSE",
+    "AGENTS.md"
+  ],
+  "files": [
+    "extensions/",
+    "index.ts",
+    "pition.config.example.json",
+    "README.md",
+    "LICENSE",
+    "AGENTS.md"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.80.5",
+    "typebox": ">=1.3.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.87.1",
+    "typebox": "1.3.27",
+    "typescript": "^5.5.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "smoke": "node smoke-load.mjs",
+    "check": "npm run smoke",
+    "prepublishOnly": "npm run check"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/pition.ts"
+    ]
+  }
+}

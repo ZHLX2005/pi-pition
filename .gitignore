@@ -1,16 +1,16 @@
-# ============================================================
-# Cloned repositories + 项目工作底稿（不入库）
-# 整个 .claude/repo/ 都是机器产物（学习笔记、跨项目设计草稿、clone 下来的别家代码）
-# 本项目 skill 在 .claude/skills/pition-dev/，那个不入这个 ignore 段，自然入 git
-# ============================================================
-.claude/repo/
+# Build / test artifacts
+node_modules/
+dist/
+*.tsbuildinfo
 
-# Tool artifacts / scratch tools (本地工具产物，不入库)
+# Scratch tools (本地工具产物，不入库)
 .tool/
+.claude/
 
-# 配置文件：含真实 Notion token，不入库
-# 用户安装时复制 pition.config.example.json → pition.config.json 后填 token
+# Local secrets / config (token-bearing) — 用 /pition 向导配置
 pition.config.json
+pition.config.local.json
 
-# 本地临时诊断脚本（不像 smoke-load.mjs 那种常驻的）
-*.local.mjs
+# OS junk
+.DS_Store
+Thumbs.db
