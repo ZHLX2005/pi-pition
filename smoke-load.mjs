@@ -1,6 +1,7 @@
 // 加载冒烟：模拟 pi 的 jiti loader，验证 extensions/pition.ts 能加载并注册 tool + 设置命令
 // jiti + pi 包都从仓库自身 node_modules 拿（CI 环境走 npm ci 后能 resolve），不需要硬编码绝对路径
 import { createJiti } from "jiti";
+import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,6 +17,29 @@ const jiti = createJiti(import.meta.url, {
 });
 
 const extPath = "file:///" + join(here, "extensions", "pition.ts").replace(/\\/g, "/");
+
+// CI 环境没有 pition.config.json → factory 早返只注册 boot 不注册运行态 tool。
+// 临时写一个最小 cfg（覆盖真 cfg；跑完即还原）让 jiti 走完整 registerTool 路径。
+const configPath = join(here, "pition.config.json");
+const realCfgBackup = existsSync(configPath) ? readFileSync(configPath, "utf8") : null;
+writeFileSync(configPath, JSON.stringify({
+  token: "ntn_smoke_dummy_token_for_jiti_load_only",
+  bindings: {
+    "smoke-db-id-0000": {
+      dbId: "smoke-db-id-0000",
+      title: "smoke",
+      fields: {
+        Name: { type: "title", description: "smoke" },
+      },
+    },
+  },
+  currentBindingId: "smoke-db-id-0000",
+}, null, 2));
+const restoreCfg = () => {
+  if (realCfgBackup !== null) writeFileSync(configPath, realCfgBackup);
+  else if (existsSync(configPath)) rmSync(configPath);
+};
+
 const mod = await jiti.import(extPath);
 console.log("extension loaded, default export:", typeof mod.default);
 
@@ -30,6 +54,7 @@ const fakePi = {
   registerFlag: () => {},
 };
 mod.default(fakePi);
+restoreCfg();
 
 console.log("registered tools:");
 for (const t of tools) console.log("  -", t);
