@@ -26,6 +26,7 @@ src/                 按职责分层的实现（无 pi 运行时依赖，纯函�
   databases.ts       Notion 库发现与 schema 读取
   wizard.ts          /pition 交互式配置向导
   boot-ctx.ts        boot 描述里的「当前状态」摘要拼装
+  role-mode.ts       助理模式注入 + /pition-mode 命令
   tools/             每个 tool 两个文件：<name>.ts 是定义（schema/描述），<name>-run.ts 是实现
     boot.ts / boot-run.ts            5 阶段配置状态机
     write.ts / write-run.ts          日常主路径：改属性 + 追加正文 + todaySoFar 预览
@@ -35,7 +36,7 @@ src/                 按职责分层的实现（无 pi 运行时依赖，纯函�
     span.ts / span-run.ts
     schemas.ts                       共享参数 schema（PROPERTY_ENTRY / QUERY_FILTER_SCHEMA）
 extensions/
-  pition.ts          纯注册层（~104 行）：遍历注册 6 个 tool + 2 命令 + 2 事件订阅
+  pition.ts          纯装配层（~55 行）：注册 2 命令 + 2 事件 + 遍历注册 6 个 tool
 test/                vitest 单元 + 集成测试
 scripts/dev/         本机开发/诊断脚本（不进 npm 包）
 ```
