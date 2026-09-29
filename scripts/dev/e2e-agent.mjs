@@ -1,44 +1,83 @@
 /**
- * pition E2E（真模型闭环）：bearer 扩展 + pition 扩展同装，起 pi 会话跑自然语言 → tool → Notion。
+ * pition E2E（真模型闭环）：起 pi 会话跑自然语言 → 观察是否调用 pition tool → 落到 Notion。
  *
- * 运行: node e2e-agent.mjs
- * 前置: ~/.nx-as/store.json 有 bearer* 配置；~/.nx-as/pi-agent/extensions/ 有 pition
+ * 用法:
+ *   PI_E2E_BASE_URL=https://api.minimaxi.com/anthropic \
+ *   PI_E2E_TOKEN=sk-xxx \
+ *   PI_E2E_MODEL=MiniMax-M3 \
+ *   PI_E2E_PROVIDER=MiniMax \
+ *   node scripts/dev/e2e-agent.mjs
+ *
+ * 前置:
+ *   - 仓库根 npm install
+ *   - pition.config.json 已配好（token + bindings）——E2E 会真的写 Notion
+ *
+ * 说明:
+ *   模型通过 pi 的 registerProvider 动态注册（不需要 nx-as 的 store.json）。
+ *   如果你的 pi 已配好默认 provider，不传环境变量也能跑（用 pi 默认模型）。
  */
-import { readFileSync, writeFileSync, copyFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { piEntry, REPO_ROOT, repoPath } from "./resolve-pi.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const PI = "D:/a_js/js_proj/nx-as/node_modules/.pnpm/@earendil-works+pi-coding-agent@0.87.1_ws@8.21.3/node_modules/@earendil-works/pi-coding-agent";
-const pi = await import(`file:///${PI}/dist/index.js`.replace(/\\/g, "/"));
+const pi = await import(pathToFileURL(piEntry).href);
 
-const st = JSON.parse(readFileSync(join(homedir(), ".nx-as", "store.json"), "utf8")).settings;
-const models = (st.bearerModels || "MiniMax-M3").split(",").map((s) => s.trim()).filter(Boolean);
+// ---- 可选：用环境变量注册一个临时 provider（免装 bearer 扩展）----
+const {
+  PI_E2E_BASE_URL: baseUrl,
+  PI_E2E_TOKEN: token,
+  PI_E2E_MODEL: modelId = "MiniMax-M3",
+  PI_E2E_PROVIDER: providerName = "MiniMax",
+} = process.env;
 
-// 装 e2e bearer 扩展（临时，测试后删）
-const agentDir = join(homedir(), ".nx-as", "pi-agent");
-writeFileSync(
-  join(agentDir, "pition-e2e-bearer.json"),
-  JSON.stringify({ provider: "MiniMax", baseUrl: st.bearerBaseUrl, models, token: st.bearerToken }),
-);
-copyFileSync(join(here, "e2e-bearer.ts"), join(agentDir, "extensions", "pition-e2e-bearer.ts"));
+// 用独立 agentDir 避免污染用户真实 ~/.pi/agent
+const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
+const extDir = join(agentDir, "extensions");
+mkdirSync(extDir, { recursive: true });
 
-const resourceLoader = new pi.DefaultResourceLoader({ cwd: process.cwd(), agentDir });
+// 把本仓库源码挂进去（若用户没通过 packages 声明）
+const shadowExt = join(extDir, "pition-e2e-shadow.ts");
+const wroteShadow = !existsSync(shadowExt);
+if (wroteShadow) {
+  // 直接 re-export 本仓库扩展，避免复制文件
+  const src = repoPath("extensions", "pition.ts");
+  writeFileSync(shadowExt, `export { default } from ${JSON.stringify(pathToFileURL(src).href)};\n`, "utf8");
+}
+
+const resourceLoader = new pi.DefaultResourceLoader({ cwd: REPO_ROOT, agentDir });
 await resourceLoader.reload();
 
-// 从运行时模型表解析扩展注册的 MiniMax 模型（model 选项要传模型对象）
-const modelRuntime = await pi.ModelRuntime.create();
-const modelObj = modelRuntime.getModel("MiniMax", models[0]);
-if (!modelObj) {
-  console.error(`✗ 模型未注册: MiniMax/${models[0]}（bearer 扩展没生效）`);
-  process.exit(1);
+// ---- 模型：环境变量优先，否则用 pi 默认 ----
+let modelObj;
+if (baseUrl && token) {
+  const modelRuntime = await pi.ModelRuntime.create();
+  const provider = {
+    name: providerName,
+    api: "anthropic-messages",
+    baseUrl,
+    apiKey: token,
+    models: [{ id: modelId, name: modelId, contextWindow: 200000, maxTokens: 8192 }],
+  };
+  try {
+    modelRuntime.registerProvider?.(provider);
+  } catch {
+    /* 老版本可能没这个 API，忽略 */
+  }
+  modelObj = modelRuntime.getModel(providerName, modelId);
+  if (!modelObj) {
+    console.error(`✗ 无法注册模型 ${providerName}/${modelId}（检查 PI_E2E_BASE_URL / TOKEN）`);
+    process.exit(1);
+  }
+} else {
+  console.log("（未传 PI_E2E_BASE_URL/TOKEN，使用 pi 默认模型）");
 }
 
 const { session } = await pi.createAgentSession({
   resourceLoader,
   sessionManager: pi.SessionManager.inMemory(),
-  model: modelObj,
+  ...(modelObj ? { model: modelObj } : {}),
   tools: [], // 只留扩展注册的 pition tool
 });
 
@@ -52,20 +91,26 @@ session.subscribe((event) => {
   }
 });
 
+const cleanup = () => {
+  if (wroteShadow && existsSync(shadowExt)) rmSync(shadowExt);
+};
+
 try {
-  console.log("=== 测试 1: 自然语言 → 新建记录 ===");
-  await session.prompt("我在今天的晨会上定了三件事：评审 pition 插件、回复合作邮件、晚上跑步 5 公里。帮我把这条记录存进我的记录存储里，标题写「晨会待办」。");
+  console.log("=== 测试 1: 自然语言 → 写入记录 ===");
+  await session.prompt(
+    "我在今天的晨会上定了三件事：评审 pition 插件、回复合作邮件、晚上跑步 5 公里。帮我把这条记录存进我的记录存储里。",
+  );
   console.log(`\n→ tool 调用: ${toolCalls.join(", ") || "(无!)"}`);
   if (!toolCalls.some((t) => t.startsWith("pition_"))) {
     console.error("FAIL: agent 没有调用 pition tool");
     process.exitCode = 1;
   } else {
-    console.log("\n=== 测试 2: 自然语言 → 查询确认 ===");
+    console.log("\n=== 测试 2: 自然语言 → 读取确认 ===");
     toolCalls = [];
-    await session.prompt("查一下我的记录存储里最新的一条记录，告诉我标题是什么。");
+    await session.prompt("读一下我当前记录页里写了什么。");
     console.log(`\n→ tool 调用: ${toolCalls.join(", ") || "(无!)"}`);
     if (!toolCalls.some((t) => t.startsWith("pition_"))) {
-      console.error("FAIL: 查询也没调 pition tool");
+      console.error("FAIL: 读取也没调 pition tool");
       process.exitCode = 1;
     } else {
       console.log("\nE2E PASS");
@@ -73,4 +118,5 @@ try {
   }
 } finally {
   session.dispose();
+  cleanup();
 }

@@ -15,9 +15,9 @@
 //
 // 与 install.mjs 的关系：单实例用 install.mjs；多实例用 install-all.mjs。
 
-import { readFileSync, mkdirSync, copyFileSync, writeFileSync, existsSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
@@ -30,15 +30,19 @@ function flag(name) {
   return out.length ? out : undefined;
 }
 
-const here = dirname(fileURLToPath(import.meta.url));
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const here = resolve(scriptDir, "..", ".."); // 仓库根（脚本在 scripts/dev/ 下）
 const configFile = resolve((flag("config") ?? [""])[0] || join(here, "pition.config.json"));
 const withNxAs = args.includes("--with-nx-as");
-const extraDirs = (flag("agent-dir") ?? []).flatMap((v) => v.split(",").map((s) => s.trim()).filter(Boolean));
+const extraDirs = (flag("agent-dir") ?? []).flatMap((v) =>
+  v
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
 
 // ---- 默认只扫用户主 pi ----
-const DEFAULT_DIRS = [
-  join(homedir(), ".pi", "agent"),
-];
+const DEFAULT_DIRS = [join(homedir(), ".pi", "agent")];
 if (withNxAs) DEFAULT_DIRS.push(join(homedir(), ".nx-as", "pi-agent"));
 
 const targets = [...DEFAULT_DIRS, ...extraDirs];
@@ -59,13 +63,28 @@ if (!cfg.token || typeof cfg.token !== "string") {
   console.error("✗ 配置缺少 token（Notion integration token，ntn_ 开头）");
   process.exit(1);
 }
-if (!Array.isArray(cfg.bindings)) cfg.bindings = [];
+// bindings 是 Record<dbId, Binding>（老格式数组自动归一）
+if (!cfg.bindings || typeof cfg.bindings !== "object") cfg.bindings = {};
+if (Array.isArray(cfg.bindings)) {
+  const normalized = {};
+  for (const b of cfg.bindings) if (b?.dbId) normalized[b.dbId] = b;
+  cfg.bindings = normalized;
+}
 
 const FIELD_TYPES = new Set([
-  "title", "rich_text", "number", "select", "multi_select",
-  "status", "checkbox", "date", "url", "email", "phone_number",
+  "title",
+  "rich_text",
+  "number",
+  "select",
+  "multi_select",
+  "status",
+  "checkbox",
+  "date",
+  "url",
+  "email",
+  "phone_number",
 ]);
-for (const b of cfg.bindings) {
+for (const b of Object.values(cfg.bindings)) {
   if (!b.dbId || !b.title) {
     console.error(`✗ 绑定缺 dbId 或 title: ${JSON.stringify(b).slice(0, 120)}`);
     process.exit(1);
@@ -77,6 +96,10 @@ for (const b of cfg.bindings) {
     }
   }
 }
+// currentBindingId 兜底
+if (!cfg.currentBindingId || !cfg.bindings[cfg.currentBindingId]) {
+  cfg.currentBindingId = Object.keys(cfg.bindings)[0] ?? null;
+}
 
 // ---- 扫描：哪些 agent 目录是真的"pi 实例" ----
 // 判据（宽松，按优先级匹配任一即视为 pi 实例）：
@@ -85,11 +108,7 @@ for (const b of cfg.bindings) {
 //   3) auth.json 存在（pi 至少启动过一次）
 const isPiAgent = (d) => {
   if (!existsSync(d)) return false;
-  return (
-    existsSync(join(d, "settings.json")) ||
-    existsSync(join(d, "extensions")) ||
-    existsSync(join(d, "auth.json"))
-  );
+  return existsSync(join(d, "settings.json")) || existsSync(join(d, "extensions")) || existsSync(join(d, "auth.json"));
 };
 const candidates = targets.filter(isPiAgent);
 const skipped = targets.filter((d) => !candidates.includes(d));
@@ -114,21 +133,26 @@ for (const agentDir of candidates) {
       const pkgs = Array.isArray(settings.packages) ? settings.packages : [];
       const srcPath = resolve(here);
       if (pkgs.some((p) => resolve(p) === srcPath)) skip = true;
-    } catch { /* 解析失败忽略 */ }
+    } catch {
+      /* 解析失败忽略 */
+    }
   }
   if (skip) conflicts.push(agentDir);
   else realCandidates.push(agentDir);
 }
 
 console.log(`找到 ${candidates.length} 个 pi agent 实例:`);
-for (const d of candidates) console.log(`  · ${d}${conflicts.includes(d) ? " (已通过 settings.json packages 声明加载 → 跳过物化)" : ""}`);
+for (const d of candidates)
+  console.log(`  · ${d}${conflicts.includes(d) ? " (已通过 settings.json packages 声明加载 → 跳过物化)" : ""}`);
 if (skipped.length) {
   console.log(`跳过 ${skipped.length} 个不存在/无 settings.json 的目录:`);
   for (const d of skipped) console.log(`  · ${d}`);
 }
 if (conflicts.length) {
   console.log("");
-  console.log("⚠ 以下实例已通过 settings.json packages 指向源码目录，install-all 不再写入 extensions/（避免重复加载）。");
+  console.log(
+    "⚠ 以下实例已通过 settings.json packages 指向源码目录，install-all 不再写入 extensions/（避免重复加载）。",
+  );
   console.log("  如要切换为物化模式：先从 settings.json packages 移除该项，再跑 install-all。");
 }
 console.log("");
@@ -140,7 +164,8 @@ if (!realCandidates.length) {
 
 // ---- 物化：每个未冲突实例都复制 pition.ts + 写入 pition.config.json ----
 const srcExt = join(here, "extensions", "pition.ts");
-let okCount = 0, failCount = 0;
+let okCount = 0,
+  failCount = 0;
 
 for (const agentDir of realCandidates) {
   const extDir = join(agentDir, "extensions");
@@ -161,4 +186,6 @@ for (const agentDir of realCandidates) {
 }
 
 console.log("");
-console.log(`汇总: ${okCount} 成功${failCount ? `, ${failCount} 失败` : ""}${conflicts.length ? `, ${conflicts.length} 跳过（已声明）` : ""} — 重启 pi 后生效。`);
+console.log(
+  `汇总: ${okCount} 成功${failCount ? `, ${failCount} 失败` : ""}${conflicts.length ? `, ${conflicts.length} 跳过（已声明）` : ""} — 重启 pi 后生效。`,
+);

@@ -1,18 +1,37 @@
-// 诊断：DefaultResourceLoader 如何解析 ~/.pi/agent/settings.json 的 packages 声明
+// 诊断：DefaultResourceLoader 如何解析 packages 声明（本仓库作为包源）
+//
+// 用法: node scripts/dev/diag-loader.mjs
+// 前置: 仓库根 npm install（提供 pi 包），~/.pi/agent/settings.json 的 packages 含本仓库路径
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { piEntry, REPO_ROOT } from "./resolve-pi.mjs";
 
-const PI = "D:/a_js/js_proj/nx-as/node_modules/.pnpm/@earendil-works+pi-coding-agent@0.87.1_ws@8.21.3/node_modules/@earendil-works/pi-coding-agent";
-const pi = await import(`file:///${PI}/dist/index.js`.replace(/\\/g, "/"));
+const pi = await import(pathToFileURL(piEntry).href);
 
-// 用户 pi 的真实环境：agentDir=~/.pi/agent，cwd=nx-as（用户在这里启动 pi）
-const agentDir = join(homedir(), ".pi", "agent");
-const cwd = "D:/a_js/js_proj/nx-as";
+// agentDir 可用 PI_CODING_AGENT_DIR 覆盖（nx-as 隔离环境用）；cwd 默认本仓库
+const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
+const cwd = REPO_ROOT;
 
 const rl = new pi.DefaultResourceLoader({ cwd, agentDir });
 await rl.reload();
 const r = rl.getExtensions();
-console.log("== loaded extensions:", (r.extensions ?? []).length);
-for (const e of r.extensions ?? []) console.log("  -", e.path ?? e.name ?? JSON.stringify(e).slice(0, 100));
-console.log("== errors:", (r.errors ?? []).length);
-for (const err of r.errors ?? []) console.log("  !", err.path ?? err.name ?? "", "→", err.error?.message ?? err.message ?? err.error ?? String(err).slice(0, 200));
+console.log("agentDir:", agentDir);
+console.log("cwd:", cwd);
+
+const extensions = r.extensions ?? [];
+console.log("== loaded extensions:", extensions.length);
+console.log("== raw keys:", Object.keys(r));
+for (const e of extensions) console.log("  -", e.path ?? e.name ?? JSON.stringify(e).slice(0, 100));
+
+// errors 字段名各版本不同，扫描已知候选
+const errs = r.errors ?? r.diagnostics ?? [];
+console.log("== errors:", errs.length);
+for (const err of errs) {
+  console.log(
+    "  !",
+    err.path ?? err.name ?? "",
+    "→",
+    err.error?.message ?? err.message ?? err.error ?? String(err).slice(0, 200),
+  );
+}

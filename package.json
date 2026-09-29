@@ -53,8 +53,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "smoke": "node smoke-load.mjs",
-    "lint": "biome check extensions/ index.ts",
-    "lint:fix": "biome check --write extensions/ index.ts",
+    "lint": "biome check extensions/ index.ts scripts/",
+    "lint:fix": "biome check --write --unsafe extensions/ index.ts scripts/",
     "check": "npm run lint && npm run typecheck && npm run smoke",
     "prepublishOnly": "npm run check"
   },
