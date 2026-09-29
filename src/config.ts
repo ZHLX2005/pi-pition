@@ -14,7 +14,7 @@ const CONFIG_FILENAME = "pition.config.json";
  *
  * @param fromUrl 通常是 `import.meta.url`；测试可注入自定义值。
  */
-export function configPath(fromUrl: string = import.meta.url): string {
+function configPath(fromUrl: string = import.meta.url): string {
   const dir = dirname(fileURLToPath(fromUrl));
   for (const candidate of [dir, dirname(dir)]) {
     try {

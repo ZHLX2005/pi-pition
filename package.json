@@ -32,7 +32,8 @@
     "AGENTS.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
-    "SECURITY.md"
+    "SECURITY.md",
+    "LINT-EXEMPTIONS.md"
   ],
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.80.5",
@@ -66,5 +67,6 @@
     "extensions": [
       "./extensions/pition.ts"
     ]
-  }
+  },
+  "lintExemptions": "./LINT-EXEMPTIONS.md"
 }

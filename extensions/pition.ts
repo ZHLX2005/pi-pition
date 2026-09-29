@@ -19,7 +19,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 // ---- src/ 模块（按职责分层，见 src/ 目录）----
-import { currentSpans as currentSpansFrom, loadConfig, saveConfig } from "../src/config.ts";
+import { currentBinding, currentSpans as currentSpansFrom, loadConfig, saveConfig } from "../src/config.ts";
 import { listDatabases } from "../src/databases.ts";
 import { notion, notionWith } from "../src/notion.ts";
 import {
@@ -465,17 +465,7 @@ export default function pitionExtension(pi: ExtensionAPI) {
   // 无法补注册，用户必须 /reload 才看得到。而每轮会话里的配置是用户现配的，没 reload 就永远差工具。
   // 未绑定库时由 currentBinding() 在 execute 首行抛错，agent 收到后自然去调 pition_boot。
 
-  // 运行态 binding 解析器：每次 tool execute 调用都重新 loadConfig 拿 currentBindingId，
-  // 不依赖启动时闭包（修复"切库后 pition_history / pition_query 仍查旧库"bug）。
-  function currentBinding(): Binding {
-    const cfg = loadConfig();
-    if (!cfg) throw new Error("pition 未配置（没有 pition.config.json）——调 pition_boot stage=token 开始配置");
-    const idx = cfg.currentBindingId;
-    if (idx === undefined || idx === null || !cfg.bindings[idx]) {
-      throw new Error("pition 没选当前库——调 pition_boot stage=select_db 选一个，或 stage=done 看状态");
-    }
-    return cfg.bindings[idx];
-  }
+  // 运行态 binding/span 解析器统一由 src/config.ts 提供（避免两份实现漂移）
 
   // ---------- pition_create_today（逃生口：显式新建 page）----------
   // 默认不调用——page 由 Notion 定时任务每天 0 点自动建。

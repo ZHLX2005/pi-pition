@@ -11,10 +11,10 @@
 import { loadConfig } from "./config.ts";
 import type { PitionConfig } from "./types.ts";
 
-export const NOTION_BASE = "https://api.notion.com";
-export const NOTION_VERSION = "2022-06-28";
+const NOTION_BASE = "https://api.notion.com";
+const NOTION_VERSION = "2022-06-28";
 
-export const NETWORK_ERR_PATTERNS = [
+const NETWORK_ERR_PATTERNS = [
   "fetch failed", // Node 18+ undici 网络层
   "ECONNRESET",
   "ETIMEDOUT",

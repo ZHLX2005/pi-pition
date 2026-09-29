@@ -1,0 +1,32 @@
+# Lint 豁免说明
+
+本文件解释 `biome.json` 里**每一个被关闭或放宽的规则**及其理由。
+biome 配置是严格 JSON（不支持注释），故豁免理由集中记在这里 —— 改配置时请同步本文。
+
+## `suspicious.noExplicitAny: "off"`
+
+**为什么关**：Notion API 的响应结构（`page.properties`、`blocks.children`）形状
+**随用户自己的数据库 schema 变化**，在接入官方 SDK 之前无法静态描述。强行标注会引入
+大量错误的类型断言（断言本身也是运行时风险），反而降低安全性。
+
+**约束在哪**：`any` 只允许出现在 **IO 边界**——即
+
+- `src/notion.ts`：`fetchNotion` / `parseOrThrow` 的响应解析
+- `src/properties.ts`：`toNotionProperty` / `readPageProperties` 等 Notion 格式编解码
+- `src/databases.ts`：库 schema 读取
+- `src/wizard.ts`：`ctx` 的结构化契约
+- `extensions/pition.ts`：tool `execute` 内对响应字段的取值
+
+**业务层（`src/config.ts` / `src/span.ts` / `src/time.ts` / `src/types.ts`）零 `any`**，
+全部走 `src/types.ts` 里收窄后的领域类型。
+
+## `noNonNullAssertion: "off"`（仅 `test/**`）
+
+测试里 `expect(x).toBeTruthy()` 之后，TypeScript 仍不收窄类型，`!` 是标准做法且不会漏到生产代码。
+覆盖范围严格限定在 `test/`（见 `biome.json` 的 `overrides`）。
+
+## 修改豁免时的检查清单
+
+- [ ] 理由仍成立（例如上游 Notion SDK 已接入 → 应改回 `error` 并逐处收窄）
+- [ ] 豁免范围是**最小**的（能按目录/文件限定就不要全局关）
+- [ ] 本文与 `biome.json` 一致
