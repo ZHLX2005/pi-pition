@@ -10,5 +10,5 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true
   },
-  "include": ["extensions/**/*.ts", "index.ts", "scripts/dev/**/*.mjs"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "extensions/**/*.ts", "index.ts", "vitest.config.ts"]
 }

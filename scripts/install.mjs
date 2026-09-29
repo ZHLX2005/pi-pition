@@ -2,9 +2,9 @@
 // pition 安装/更新器：把插件与配置物化到 pi 的 agent 目录
 //
 // 用法：
-//   node install.mjs                          # 用同目录 pition.config.json 安装到默认位置
-//   node install.mjs --config ./my.json       # 指定配置文件
-//   node install.mjs --agent-dir ~/.pi/agent  # 指定 pi agent 目录（默认 ~/.nx-as/pi-agent）
+//   node scripts/install.mjs                          # 用同目录 pition.config.json 安装到默认位置
+//   node scripts/install.mjs --config ./my.json       # 指定配置文件
+//   node scripts/install.mjs --agent-dir ~/.pi/agent  # 指定 pi agent 目录（默认 ~/.nx-as/pi-agent）
 //
 // 安装内容：
 //   <agent-dir>/extensions/pition.ts           ← 本包 extensions/pition.ts（复制）
@@ -12,9 +12,9 @@
 //
 // token 为空或没有绑定任何库时，会写入空绑定配置并提示（pi 加载时 pition 不注册 tool，无害）。
 
-import { readFileSync, mkdirSync, copyFileSync, writeFileSync, existsSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // ---- 参数解析 ----
@@ -58,8 +58,17 @@ if (!cfg.currentBindingId || !cfg.bindings[cfg.currentBindingId]) {
 
 // ---- 校验绑定（本地静态检查，不联网）----
 const FIELD_TYPES = new Set([
-  "title", "rich_text", "number", "select", "multi_select",
-  "status", "checkbox", "date", "url", "email", "phone_number",
+  "title",
+  "rich_text",
+  "number",
+  "select",
+  "multi_select",
+  "status",
+  "checkbox",
+  "date",
+  "url",
+  "email",
+  "phone_number",
 ]);
 for (const b of Object.values(cfg.bindings)) {
   if (!b.dbId || !b.title) {
@@ -68,7 +77,9 @@ for (const b of Object.values(cfg.bindings)) {
   }
   for (const [name, meta] of Object.entries(b.fields || {})) {
     if (!FIELD_TYPES.has(meta.type)) {
-      console.error(`✗ 绑定「${b.title}」字段「${name}」类型非法: ${meta.type}（允许: ${[...FIELD_TYPES].join(", ")}）`);
+      console.error(
+        `✗ 绑定「${b.title}」字段「${name}」类型非法: ${meta.type}（允许: ${[...FIELD_TYPES].join(", ")}）`,
+      );
       process.exit(1);
     }
   }

@@ -19,12 +19,13 @@ pition 是一个 pi coding agent 扩展：把 Notion 数据库变成 agent 的�
 ## Commands
 
 ```bash
-npm run smoke       # jiti 加载冒烟（CI 与 prepublishOnly 的唯一门禁）
-npm run typecheck   # tsc --noEmit（有历史类型债，非阻塞；改到哪修到哪）
-node scripts/dev/diag-session.mjs   # SDK 会话装配诊断（本机 nx-as 路径，仅开发机可跑）
+npm run check       # 五门：lint → typecheck → test → knip → smoke（提交前必跑）
+npm run lint:fix    # biome 自动修复
+npm test            # vitest（单元 + 集成）
+node scripts/dev/diag-session.mjs   # SDK 会话装配诊断（需先 npm install）
 ```
 
-改代码后必须跑 `npm run smoke` 并修到 PASS。
+改代码后必须跑 `npm run check` 并修到全绿。
 
 ## 发布流程（tag 驱动，GitHub Actions 自动 npm publish）
 

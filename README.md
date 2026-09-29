@@ -4,6 +4,22 @@
 
 不做 MCP。单用户固定 token + 自有库 + 定制 tool 语义，原生 pi 扩展更轻。
 
+## 快速开始
+
+```bash
+# 1. 装包
+pi install npm:@flowot/pi-pition
+
+# 2. 在 pi TUI 里跑配置向导（填 token → 选库 → 补字段说明）
+/pition
+
+# 3. 直接用自然语言记东西
+> 今天上午跑了 5 公里，中午点了外卖 35 元
+# → agent 调 pition_write，属性按类型合并（标签 union、金额累加），正文追加到当前 page
+```
+
+配置完成后 6 个 tool 立即可用，无需重启。
+
 ## 安装
 
 ```bash
@@ -30,7 +46,7 @@ cd pi-pition && npm install
 | `pition_read` | 读当前 page 完整内容（properties + 所有正文 block） |
 | `pition_history` | 翻旧账查 page 列表（带单字段过滤）；日常不调 |
 | `pition_create_today` | **逃生口**：定时任务挂了自己手动建 page（默认不调） |
-| `pition_span` | **区间事件**：开始/心跳/结束（跑步、开会、午休）；结束才落 Notion，进行中持续注入全局提示词 |
+| `pition_span` | **区间事件**：`start` / `end`（跑步、开会、午休）；支持**并行多个**，结束才落 Notion，进行中持续注入全局提示词 |
 
 所有运行态 tool **无条件注册**——没绑定库时调用会得到清晰错误，指引 agent 去走 `pition_boot`。
 
@@ -76,11 +92,17 @@ cd pi-pition && npm install
 
 ```ts
 pition_span({ action: "start", eventName: "跑步", note: "公园 5 公里" })
-// → cfg 落盘 _activeSpan；此后每次模型请求前全局提示词自动注入：
-//   「📍 进行中：跑步（公园 5 公里），已 28 分钟——若完成调 end，仍在继续调 heartbeat」
-pition_span({ action: "end", summary: "感觉很好" })
+// → 落盘到 cfg._activeSpans；此后每次模型请求前全局提示词自动注入：
+//   「📍 进行中 1 件事：
+//     - 跑步（公园 5 公里），已 28 分钟（14:32 开始）」
+
+pition_span({ action: "end", eventName: "跑步", summary: "感觉很好" })
 // → 当前 page 追加一段：[14:32-15:00 持续 28 分钟] 跑步（公园 5 公里）— 感觉很好
 ```
+
+**可以并行多个事件**（边养神边听歌是真实生活）——`_activeSpans` 是数组。
+**不需要心跳**：累计时长由 `startedAt` 现算，每次对话自动更新，跨轮次自动增长。
+结束时若有多个进行中事件，必须传 `eventName` 指定收尾哪个（否则报错列出全部候选）。
 
 跨重启保留；agent reload 也能记得「还在跑步」。
 
@@ -132,14 +154,17 @@ formula / relation / rollup 等计算类字段不可写，不要放进配置。
 
 ## nx-as 物化形态（可选）
 
-`node install.mjs` 把 `extensions/pition.ts` + 配置复制到 `~/.nx-as/pi-agent/extensions/`（pi-agent 隔离环境用）；一般用户不需要。
+`node scripts/install.mjs` 把 `extensions/pition.ts` + 配置复制到 `~/.nx-as/pi-agent/extensions/`（pi-agent 隔离环境用）；一般用户不需要。
 
 ## 开发
 
 ```bash
-npm run check        # lint + typecheck + smoke（prepublishOnly 同款三门）
-node scripts/dev/diag-session.mjs   # SDK 会话装配诊断（需本机 pi 源码路径）
+npm run check        # 五门：lint → typecheck → test → knip → smoke（prepublishOnly 同款）
+npm test             # vitest（单元 + 集成）
+node scripts/dev/diag-session.mjs   # SDK 会话装配诊断（需先 npm install）
 ```
+
+目录结构、硬约束、加新 tool 的流程见 `CONTRIBUTING.md`。
 
 发布：bump `package.json` version → 写 `CHANGELOG.md` → `git tag vX.Y.Z && git push origin vX.Y.Z`，GitHub Actions 自动 smoke → npm publish（provenance）→ GitHub Release。
 

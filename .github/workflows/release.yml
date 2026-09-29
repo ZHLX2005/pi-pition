@@ -25,7 +25,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Smoke-load before publishing
-        run: node smoke-load.mjs
+        run: node scripts/smoke-load.mjs
 
   publish-npm:
     needs: smoke

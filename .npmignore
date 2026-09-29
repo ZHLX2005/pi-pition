@@ -1,5 +1,10 @@
-# 开发期脚本不进发布包
+# 开发期脚本与测试不进发布包
 scripts/
+test/
+vitest.config.ts
+knip.config.js
+.engineering-rubric.md
+
 .github/
 .claude/
 node_modules/

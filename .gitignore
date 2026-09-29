@@ -14,3 +14,4 @@ pition.config.local.json
 # OS junk
 .DS_Store
 Thumbs.db
+.claude/settings.local.json

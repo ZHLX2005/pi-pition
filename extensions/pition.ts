@@ -15,395 +15,27 @@
 //   title/rich_text → 字符串；number → 数字；select/multi_select → 选项名字符串（逗号分隔则多选）；
 //   checkbox → 布尔；date → "YYYY-MM-DD" 或 ISO；url/email → 字符串
 
-import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-const NOTION_BASE = "https://api.notion.com";
-const NOTION_VERSION = "2022-06-28";
+// ---- src/ 模块（按职责分层，见 src/ 目录）----
+import { currentSpans as currentSpansFrom, loadConfig, saveConfig } from "../src/config.ts";
+import { listDatabases } from "../src/databases.ts";
+import { notion, notionWith } from "../src/notion.ts";
+import {
+  blocksToText,
+  buildProperties,
+  contentToBlocks,
+  mergeProperties,
+  readPageProperties,
+} from "../src/properties.ts";
+import { buildRoleInjections } from "../src/role.ts";
+import { endSpan, renderSpansStatus, startSpan } from "../src/span.ts";
+import { autoFillDateProperty, prefixClockToContent, toDate } from "../src/time.ts";
+import type { Binding, FieldMeta, PitionConfig } from "../src/types.ts";
+import { detail, WRITABLE_TYPES } from "../src/types.ts";
+import { registerSetupCommand } from "../src/wizard.ts";
 
-// 可写的 Notion 字段类型（formula/relation/rollup 等计算字段不可写）
-const WRITABLE_TYPES = [
-  "title",
-  "rich_text",
-  "number",
-  "select",
-  "multi_select",
-  "status",
-  "checkbox",
-  "date",
-  "url",
-  "email",
-  "phone_number",
-] as const;
-
-interface FieldMeta {
-  type: string;
-  description?: string;
-}
-interface Binding {
-  dbId: string;
-  title: string;
-  description?: string;
-  fields: Record<string, FieldMeta>;
-}
-interface PitionConfig {
-  token: string;
-  // 所有已描述过的库都保留（key = dbId）；切空间/重选时不丢字段 desc
-  bindings: Record<string, Binding>;
-  // 当前默认操作的库 id（agent 日常 tool 都用这个）；切空间 = 改这个值
-  currentBindingId: string | null;
-  // 运行时模式（助理模式）开关 — 持久化配置，可被 pition_boot stage=set_mode 或 /pition-mode 切换
-  // 缺省 = false（首次装完不会被自动注入；agent 主动开启后才注入）
-  _assistantMode?: boolean;
-  // 进行中的 span（可并行多个——人可以边养神边听歌）。start 追加，end 按事件名移除。
-  // 跨重启保留——agent reload 也能记得「还在跑步」。
-  _activeSpans?: ActiveSpan[];
-}
-
-// tool execute 返回里 details 字段的统一类型——给 registerTool 显式声明避免 union 推导
-type ToolDetails = Record<string, unknown>;
-
-// 统一 details 出口：pi 的 registerTool 会从 execute 返回值推导 AgentToolResult<TDetails>，
-// 多分支返回不同 details 形状会推成 union 而炸类型。所有 details 都经此 helper，
-// 返回类型固定 Record<string, unknown>，推导恒定。
-function detail(fields: ToolDetails): ToolDetails {
-  return fields;
-}
-
-interface ActiveSpan {
-  spanId: string; // ulid-ish，唯一 id
-  eventName: string; // "开会"、"跑步"、"午休"
-  note?: string; // 备注（如 "和 x 团队对齐排期"）
-  startedAt: string; // ISO 字符串；每次 before_agent_start 现算 (now - startedAt) 得累计时长
-}
-
-// 配置定位：扩展文件所在目录 → 其父目录（包形式安装时配置在包根）
-function configPath(): string {
-  const dir = dirname(fileURLToPath(import.meta.url));
-  for (const candidate of [dir, dirname(dir)]) {
-    try {
-      readFileSync(join(candidate, "pition.config.json"), "utf8");
-      return join(candidate, "pition.config.json");
-    } catch {
-      // 试下一个
-    }
-  }
-  return join(dirname(dir), "pition.config.json"); // 都不存在 → 默认写包根
-}
-
-function loadConfig(): PitionConfig | null {
-  try {
-    const raw = JSON.parse(readFileSync(configPath(), "utf8")) as any;
-    if (!raw.token || typeof raw.token !== "string") return null;
-    // 兼容老格式：bindings: [b, c, ...] → bindings: { [b.dbId]: b, ... }
-    let bindings: Record<string, Binding> = {};
-    if (raw.bindings && typeof raw.bindings === "object" && !Array.isArray(raw.bindings)) {
-      bindings = raw.bindings;
-    } else if (Array.isArray(raw.bindings)) {
-      for (const b of raw.bindings) if (b?.dbId) bindings[b.dbId] = b;
-    }
-    // 兼容老格式：binding: {...} → bindings: { [id]: b }; currentBindingId 同步
-    if (raw.binding && typeof raw.binding === "object" && raw.binding.dbId && !bindings[raw.binding.dbId]) {
-      bindings[raw.binding.dbId] = raw.binding;
-    }
-    // currentBindingId 兼容：缺省取 bindings 里第一个
-    let currentBindingId: string | null = raw.currentBindingId ?? null;
-    if (!currentBindingId || !bindings[currentBindingId]) {
-      currentBindingId = Object.keys(bindings)[0] ?? null;
-    }
-    // _activeSpans 兼容：老格式 _activeSpan 单对象 → 数组首元素
-    let activeSpans: ActiveSpan[] | undefined;
-    if (Array.isArray(raw._activeSpans)) {
-      activeSpans = raw._activeSpans;
-    } else if (raw._activeSpan && typeof raw._activeSpan === "object") {
-      activeSpans = [raw._activeSpan];
-    }
-    return {
-      token: raw.token,
-      bindings,
-      currentBindingId,
-      _assistantMode: raw._assistantMode,
-      _activeSpans: activeSpans,
-    };
-  } catch {
-    // 无配置或非法 JSON
-  }
-  return null;
-}
-
-function saveConfig(cfg: PitionConfig): void {
-  writeFileSync(configPath(), `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
-}
-
-// Notion HTTP 调用：网络层抗抖动（指数退避），HTTP 层不重试（4xx/5xx 让 Notion 自己说）
-// 解决"国内到 api.notion.com 链路抖动 ~25% 丢包 → pi 进程内 keep-alive 连接被 RST 后 fetch 直接抛 'fetch failed'"
-const NETWORK_ERR_PATTERNS = [
-  "fetch failed", // Node 18+ undici 网络层
-  "ECONNRESET",
-  "ETIMEDOUT",
-  "ENOTFOUND",
-  "ECONNREFUSED",
-  "UND_ERR_SOCKET",
-  "UND_ERR_CONNECT_TIMEOUT",
-];
-const RETRY_DELAYS_MS = [500, 1500, 4500]; // 3 次尝试：首次 + 2 次退避重试
-
-function isNetworkError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  if (err.name === "AbortError") return true; // 超时也按网络错误处理
-  return NETWORK_ERR_PATTERNS.some((p) => err.message.includes(p));
-}
-
-async function fetchNotion(
-  method: string,
-  path: string,
-  body: unknown,
-  headers: Record<string, string>,
-): Promise<Response> {
-  const url = NOTION_BASE + path;
-  const payload = body ? JSON.stringify(body) : undefined;
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
-    // 每次重试都强制新连接（5s 超时，避免 Node 复用死掉的 keep-alive socket）
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 5000);
-    try {
-      return await fetch(url, {
-        method,
-        headers: body ? headers : { ...headers, Connection: "close" },
-        body: payload,
-        signal: ac.signal,
-      });
-    } catch (e) {
-      lastErr = e;
-      if (!isNetworkError(e)) throw e; // 非网络错（如 AbortError 非超时）直接抛
-      if (attempt === RETRY_DELAYS_MS.length) break; // 3 次都网络错 → 退出循环抛错
-      const wait = RETRY_DELAYS_MS[attempt];
-      console.warn(
-        `[pition] ${method} ${path} 网络层失败 (第 ${attempt + 1} 次)：${(e as Error).message}；${wait}ms 后重试`,
-      );
-      await new Promise((r) => setTimeout(r, wait));
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-  throw lastErr;
-}
-
-// 用给定 token 调 Notion（与 tools 用的 notion() 分开：向导要用未保存的 token 试连）
-async function notionWith(token: string, method: string, path: string, body?: unknown): Promise<any> {
-  const res = await fetchNotion(method, path, body, {
-    Authorization: `Bearer ${token}`,
-    "Notion-Version": NOTION_VERSION,
-    "Content-Type": "application/json",
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = json as { code?: string; message?: string };
-    throw new Error(`Notion ${method} ${path} → ${res.status} ${err.code || ""}: ${err.message || "未知错误"}`);
-  }
-  return json;
-}
-
-async function notion(cfg: PitionConfig | null, method: string, path: string, body?: unknown): Promise<any> {
-  // 兜底：cfg 缺失时再 loadConfig 一次（防御性，应已由 currentBinding() 之前保证）
-  const real = cfg ?? loadConfig();
-  if (!real) throw new Error("pition 未配置（没有 pition.config.json）");
-  const res = await fetchNotion(method, path, body, {
-    Authorization: `Bearer ${real.token}`,
-    "Notion-Version": NOTION_VERSION,
-    "Content-Type": "application/json",
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = json as { code?: string; message?: string };
-    throw new Error(`Notion ${method} ${path} → ${res.status} ${err.code || ""}: ${err.message || "未知错误"}`);
-  }
-  return json;
-}
-
-// ---- 简单值 → Notion property 格式 ----
-
-function toNotionProperty(type: string, value: any): any {
-  switch (type) {
-    case "title":
-      return { title: [{ text: { content: String(value) } }] };
-    case "rich_text":
-      return { rich_text: [{ text: { content: String(value) } }] };
-    case "number":
-      return { number: Number(value) };
-    case "select":
-      return { select: { name: String(value) } };
-    case "multi_select": {
-      const names = Array.isArray(value)
-        ? value
-        : String(value)
-            .split(/[,，]/)
-            .map((s: string) => s.trim())
-            .filter(Boolean);
-      return { multi_select: names.map((name: string) => ({ name })) };
-    }
-    case "status":
-      return { status: { name: String(value) } };
-    case "checkbox":
-      return { checkbox: Boolean(value) };
-    case "date":
-      return { date: { start: String(value) } };
-    case "url":
-      return { url: String(value) };
-    case "email":
-      return { email: String(value) };
-    case "phone_number":
-      return { phone_number: String(value) };
-    default:
-      throw new Error(`暂不支持的字段类型: ${type}（请用面板调整该字段的用途或移除）`);
-  }
-}
-
-function buildProperties(binding: Binding, entries: Array<{ name: string; value: unknown }>): Record<string, any> {
-  const out: Record<string, any> = {};
-  for (const { name, value } of entries) {
-    const meta = binding.fields[name];
-    const type = meta?.type;
-    if (!type)
-      throw new Error(
-        `存储「${binding.title}」没有字段「${name}」。可用字段: ${Object.keys(binding.fields).join("、")}`,
-      );
-    out[name] = toNotionProperty(type, value);
-  }
-  return out;
-}
-
-// 把 page 上现有 properties 渲染成"按字段名 → 标量"的快照，给 merge 用。
-// 写入前 read 一次 page（多 1 次 HTTP），避免每次合并都重复结构解析。
-function readPageProperties(pageProps: Record<string, any>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [name, prop] of Object.entries(pageProps || {})) {
-    const anyProp = prop as any;
-    if (anyProp.title) out[name] = anyProp.title.map((t: any) => t.plain_text).join("");
-    else if (anyProp.rich_text) out[name] = anyProp.rich_text.map((t: any) => t.plain_text).join("");
-    else if (anyProp.select) out[name] = anyProp.select?.name ?? null;
-    else if (anyProp.multi_select) out[name] = anyProp.multi_select.map((o: any) => o.name);
-    else if (anyProp.checkbox !== undefined) out[name] = anyProp.checkbox;
-    else if (anyProp.number !== undefined) out[name] = anyProp.number;
-    else if (anyProp.date) out[name] = anyProp.date?.start ?? null;
-    else if (anyProp.status) out[name] = anyProp.status?.name ?? null;
-  }
-  return out;
-}
-
-// 把 value 按字段类型合并到 current 上：返回新值（或重算）。
-// overwrite=true：直接用新值（不读 current）。
-// overwrite=false/缺省：按类型 append 合并。
-// title / url / email / phone_number / select / status：单值字段，覆盖语义（append 没意义）。
-// multi_select / rich_text / number / date / checkbox：append 语义。
-function mergePropertyValue(type: string, current: unknown, next: unknown, overwrite: boolean): unknown {
-  if (overwrite) return next;
-  if (current === undefined || current === null || current === "") return next; // 没旧值就当首次写
-  switch (type) {
-    case "multi_select": {
-      const cur = Array.isArray(current) ? (current as string[]) : [];
-      const nxt = Array.isArray(next) ? (next as string[]) : [String(next)];
-      return Array.from(new Set([...cur, ...nxt])); // union
-    }
-    case "rich_text": {
-      return `${current} / ${String(next)}`;
-    }
-    case "number": {
-      const a = Number(current) || 0;
-      const b = Number(next) || 0;
-      return a + b;
-    }
-    case "date": {
-      // date 取更早
-      const a = String(current);
-      const b = String(next);
-      return a < b ? a : b;
-    }
-    case "checkbox": {
-      return Boolean(current) || Boolean(next);
-    }
-    // 单值字段 append 语义无意义，直接覆盖
-    default:
-      return next;
-  }
-}
-
-// 在现有 properties 上做 entries 列表的合并，返回 Notion API 形态。
-// 必须传入已读出的 currentSnapshot（来自 readPageProperties(pageProps)）
-function mergeProperties(
-  binding: Binding,
-  currentSnapshot: Record<string, unknown>,
-  entries: Array<{ name: string; value: unknown; overwrite?: boolean }>,
-): Record<string, any> {
-  const out: Record<string, any> = {};
-  for (const { name, value, overwrite } of entries) {
-    const meta = binding.fields[name];
-    const type = meta?.type;
-    if (!type)
-      throw new Error(
-        `存储「${binding.title}」没有字段「${name}」。可用字段: ${Object.keys(binding.fields).join("、")}`,
-      );
-    const merged = mergePropertyValue(type, currentSnapshot[name], value, !!overwrite);
-    out[name] = toNotionProperty(type, merged);
-  }
-  return out;
-}
-
-// ---- 时间戳工具 ----
-// 模型看不到事件发生瞬间；程序可以从 new Date() 拿到当前时间。
-// 粒度：[HH:MM] 本地时间（用户选定时分粒度）；跨日由 Notion 自带 last_edited_time 区分。
-
-/** 接受 ISO 字符串 / Date / 数字 / undefined，产出 Date 对象（无效输入抛错） */
-function toDate(input: string | number | Date | undefined, fieldName = "timestamp"): Date {
-  if (input === undefined) return new Date();
-  const d = input instanceof Date ? input : new Date(input);
-  if (Number.isNaN(d.getTime())) throw new Error(`${fieldName} 不是合法时间：${String(input)}`);
-  return d;
-}
-
-/** Date → "[HH:MM]"（本地时区；补零） */
-function clockPrefix(d: Date): string {
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `[${hh}:${mm}]`;
-}
-
-/** 给正文每段加 [HH:MM] 前缀；空段不变；保留 \n\n 段分隔语义 */
-function prefixClockToContent(content: string, when: Date): string {
-  const prefix = clockPrefix(when);
-  return content
-    .split(/\n{2,}/)
-    .map((para) => (para.trim() ? `${prefix} ${para}` : content))
-    .join("\n\n");
-}
-
-/** 把 YYYY-MM-DD 写到 properties 里 type=date 的字段——agent 没传 date 时回退到 timestamp */
-function autoFillDateProperty(
-  binding: Binding,
-  entries: Array<{ name: string; value: unknown }>,
-  when: Date,
-): Array<{ name: string; value: unknown }> {
-  const ymd = `${when.getFullYear()}-${String(when.getMonth() + 1).padStart(2, "0")}-${String(when.getDate()).padStart(2, "0")}`;
-  const dateFields = Object.entries(binding.fields)
-    .filter(([, m]) => m.type === "date")
-    .map(([n]) => n);
-  if (!dateFields.length) return entries;
-  const supplied = new Set(entries.map((e) => e.name));
-  const filled = [...entries];
-  for (const n of dateFields) {
-    if (!supplied.has(n)) filled.push({ name: n, value: ymd });
-  }
-  return filled;
-}
-
-// properties 参数 schema：用 [{name, value, overwrite}] 数组对而不是 Record——
-// 部分 provider（实测 MiniMax）对 Record 形态的嵌套对象参数解析不稳，
-// 数组对是最朴素的结构，所有模型都能正确构造
-// overwrite 默认 false=append 合并（按字段类型）；true=整段覆盖。
 const PROPERTY_ENTRY = Type.Object(
   {
     name: Type.String({ description: `字段名（必须与下列字段之一完全一致）` }),
@@ -443,85 +75,10 @@ const QUERY_FILTER_SCHEMA = Type.Object(
 // 不使用 forceSystemPrompt —— 会导致整段替换、prompt cache miss。
 // ============================================================================
 
+/** 助理模式运行态：开关 + 最近一次读到的配置 */
 interface RoleState {
   enabled: boolean;
   cfg: PitionConfig | null;
-}
-
-function buildRoleInjections(cfg: PitionConfig): { guidelines: string[]; sections: Record<string, string> } {
-  const binding = cfg.currentBindingId ? cfg.bindings[cfg.currentBindingId] : null;
-  const storeLabel = binding
-    ? `【${binding.title}】${binding.description ? ` — ${binding.description}` : ""}`
-    : "（未绑定）";
-  const guidelines: string[] = [
-    // ——边界判断（先看）——
-    "你是 pition 个人管理助手，但 **不要无脑自动调 pition_write**。每次用户发言，先判断这一类才落库：「明确的时间锚定（今天/刚才/3 点）+ 具体内容（做了什么/吃了什么/见了谁/花了多少/心情如何/感悟什么）」。",
-    "**情绪/心情/思想感悟/感受/反思是事实事件，要记**——比如「今天心情不错」「刚才焦虑了一下」「突然悟到一个道理」「觉得这个项目太烂」。这类用户是在主动交付内容，不要因为「不是事实陈述」就漏掉。",
-    "**真正不该调**的：闲聊/纯问答/调试代码/解释概念/与记录无关的纯讨论——只有这几类。",
-    "用户明确说「记一下/记下来/记到 pition」**才**强制落库；用户没明确表态时，agent 自作主张落库要先在回复里点一句「我刚记到【库名】了」让用户能立刻否决。",
-    "落库优先级：默认走 pition_write 写当前 page；pition_write 返回「当前库还没 page」时才调 pition_create_today 手动建一条（通常是定时任务挂了）。",
-    // ——读取/查询决策——
-    "用户问「今天写了什么/刚才记了什么」调 pition_read；用户翻旧账（「上个月/上周/去年」）才调 pition_history；日常不要主动列 page 列表。",
-    "字段名/取值不清楚看 tool description（启动时已从配置渲染进各 tool 描述）；不要凭空猜。",
-    // ——交互收尾——
-    "写入完成后简短复述：「记到【库名】了」+ 页面 URL。",
-  ];
-  const sections: Record<string, string> = {
-    pition_role:
-      `你是 pition 个人管理助手。用户的对话是你的「输入来源」，绑定的 Notion 库是你的「持久化存储」。\n\n` +
-      `当前库：${storeLabel}。\n\n` +
-      `可用工具（按使用频率排序）：\n` +
-      `- pition_write（主路径）：改当前 page 属性 + 追加正文\n` +
-      `- pition_read：读当前 page 完整内容（属性 + 所有正文 block）\n` +
-      `- pition_create_today（逃生口）：定时任务挂了自己手动建 page，默认不调\n` +
-      `- pition_history（翻旧账）：列 page 列表，仅在显式翻历史时调\n` +
-      `- pition_query（备用）：通用单字段过滤查询\n\n` +
-      `字段说明已启动时注入到各 tool description 里——无需额外查询。\n\n` +
-      `核心行为准则：\n` +
-      `- **触发判断**：明确的时间锚定 + 具体内容（做了什么/吃了什么/心情如何/感悟什么）就落库\n` +
-      `- **情绪/心情/思想感悟/感受/反思都是事实事件，要记**——用户是在主动交付内容\n` +
-      `- **真正不该调**的：闲聊/纯问答/调试代码/解释概念/与记录无关的纯讨论\n` +
-      `- **触发确认**：用户没明确说「记一下」时，落完要点一句「我刚记到【库名】了」让用户能立刻否决\n` +
-      `- **默认走 pition_write**（追加当日条目）；写失败才考虑 pition_create_today\n` +
-      `- 字段名/取值不清楚就直接看各 tool 的 description（已注入字段说明）\n` +
-      `- 不要主动列 page 列表——page 心智对日常记录透明\n\n` +
-      `反例（不该调 write 的）：\n` +
-      `- 「今天心情不错」→ **要记**（情绪是事实事件）\n` +
-      `- 「刚才焦虑了一下」→ **要记**\n` +
-      `- 「突然悟到一个道理」→ **要记**（思想感悟）\n` +
-      `- 「这个项目太烂」→ **要记**（感受）\n\n` +
-      `正例（不该调 write 的）：\n` +
-      `- 「你觉得 x 怎么样」→ 不记，纯问答\n` +
-      `- 「这段代码报错」→ 不记，调试代码\n` +
-      `- 「解释一下什么是 x」→ 不记，概念解释\n` +
-      `- 「今天去超市了吗」→ 不记，是询问而非陈述`,
-  };
-  return { guidelines, sections };
-}
-
-// 运行态 span 解析器：每次 before_agent_start 都重新 loadConfig 拿 _activeSpans。
-// 必须放在 registerRoleMode 之前 —— jiti 转 ESM 后闭包内对模块顶层函数的引用在
-// async handler emit 阶段才真正求值，hoist 在异步链下不可靠（踩过 ReferenceError）。
-function currentSpans(): ActiveSpan[] {
-  const cfg = loadConfig();
-  return cfg?._activeSpans ?? [];
-}
-
-// 把 spans 渲染成"全局上下文"文案，注入到 before_agent_start。支持并行多事件。
-// 例：
-//   📍 进行中 2 件事：
-//   - 养神，已 3 分钟（01:38 开始）
-//   - 调试 pition，已 12 分钟（01:29 开始）
-//   结束某个：调 pition_span action=end eventName=<名>。
-function renderSpansStatus(spans: ActiveSpan[], now: Date): string {
-  const lines = spans.map((span) => {
-    const started = new Date(span.startedAt).getTime();
-    const elapsedMin = Math.max(0, Math.round((now.getTime() - started) / 60000));
-    const noteSuffix = span.note ? `（${span.note}）` : "";
-    const clock = new Date(started).toTimeString().slice(0, 5);
-    return `- ${span.eventName}${noteSuffix}，已 ${elapsedMin} 分钟（${clock} 开始）`;
-  });
-  return `📍 进行中 ${spans.length} 件事：\n${lines.join("\n")}\n   结束某个：调 pition_span action=end eventName=<事件名>。`;
 }
 
 function registerRoleMode(pi: ExtensionAPI, state: RoleState): void {
@@ -536,7 +93,7 @@ function registerRoleMode(pi: ExtensionAPI, state: RoleState): void {
       }
     }
     // 2) 进行中 span 上下文注入 —— 独立于助理模式（即使助理模式关，span 状态也要可见）
-    const spans = currentSpans();
+    const spans = currentSpansFrom();
     if (spans.length) {
       event.systemPromptOptions.sections.pition_span = renderSpansStatus(spans, new Date());
     }
@@ -950,14 +507,7 @@ export default function pitionExtension(pi: ExtensionAPI) {
       });
       if (params.content) {
         const bodyText = params.prefixContent === false ? params.content : prefixClockToContent(params.content, when);
-        const blocks = bodyText
-          .split(/\n{2,}/)
-          .filter(Boolean)
-          .map((text) => ({
-            object: "block",
-            type: "paragraph",
-            paragraph: { rich_text: [{ text: { content: text } }] },
-          }));
+        const blocks = contentToBlocks(bodyText);
         await notion(null, "PATCH", `/v1/blocks/${page.id}/children`, { children: blocks });
       }
       return {
@@ -1102,14 +652,7 @@ export default function pitionExtension(pi: ExtensionAPI) {
       if (params.appendContent) {
         const bodyText =
           params.prefixTimestamp === false ? params.appendContent : prefixClockToContent(params.appendContent, when);
-        const blocks = bodyText
-          .split(/\n{2,}/)
-          .filter(Boolean)
-          .map((text) => ({
-            object: "block",
-            type: "paragraph",
-            paragraph: { rich_text: [{ text: { content: text } }] },
-          }));
+        const blocks = contentToBlocks(bodyText);
         await notion(null, "PATCH", `/v1/blocks/${latest.id}/children`, { children: blocks });
       }
       // 写入后立刻读一次 page 全部内容——返回里附 todaySoFar 让模型直接预览 + 追问
@@ -1129,11 +672,7 @@ export default function pitionExtension(pi: ExtensionAPI) {
           })
           .filter(Boolean)
           .join("\n") || "  （无）";
-      const contentBlock = (blocks.results as any[])
-        .filter((b: any) => b.type === "paragraph")
-        .map((b: any) => (b.paragraph?.rich_text ?? []).map((t: any) => t.plain_text).join(""))
-        .filter(Boolean)
-        .join("\n\n");
+      const contentBlock = blocksToText(blocks.results as any[]);
       const todaySoFar = `属性:\n${propsBlock}\n\n正文:\n${contentBlock || "（空）"}`;
       return {
         content: [
@@ -1245,22 +784,12 @@ export default function pitionExtension(pi: ExtensionAPI) {
       const binding = currentBinding();
       const cfg = loadConfig();
       if (!cfg) throw new Error("pition 未配置");
-      const now = new Date();
-      const isoNow = now.toISOString();
-      const spans = cfg._activeSpans ?? [];
 
       if (params.action === "start") {
-        if (!params.eventName) throw new Error("action=start 必须传 eventName");
-        const span: ActiveSpan = {
-          spanId: `span_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          eventName: params.eventName,
-          note: params.note,
-          startedAt: isoNow,
-        };
-        saveConfig({ ...cfg, _activeSpans: [...spans, span] });
-        const others = spans.length
-          ? `（并行中还有 ${spans.length} 件：「${spans.map((s) => s.eventName).join("」「")}」）`
-          : "";
+        // 状态机在 src/span.ts（纯函数、有单测）——这里只做落盘与文案
+        const { cfg: next, span, totalActive } = startSpan(cfg, params.eventName ?? "", params.note);
+        saveConfig(next);
+        const others = totalActive > 1 ? `（并行中还有 ${totalActive - 1} 件进行中）` : "";
         return {
           content: [
             {
@@ -1268,45 +797,12 @@ export default function pitionExtension(pi: ExtensionAPI) {
               text: `📍 已开始「${span.eventName}」${span.note ? `（${span.note}）` : ""}${others}。\n全局提示词的 pition_span section 会持续注入各事件累计时长（实际数字，不是占位符）。结束请调 pition_span action=end。`,
             },
           ],
-          details: detail({ action: "start", span, totalActive: spans.length + 1 }),
+          details: detail({ action: "start", span, totalActive }),
         };
       }
 
-      // action === "end"
-      if (!spans.length) throw new Error("没有进行中的 span 可以 end——直接调 pition_write 即可");
-      let target: ActiveSpan | undefined;
-      let rest: ActiveSpan[];
-      if (params.eventName) {
-        target = spans.find((s) => s.eventName === params.eventName);
-        if (!target) {
-          throw new Error(
-            `没有名为「${params.eventName}」的进行中事件。当前进行中：${spans.map((s) => `「${s.eventName}」`).join("、") || "无"}`,
-          );
-        }
-        rest = spans.filter((s) => s !== target);
-      } else if (spans.length === 1) {
-        target = spans[0];
-        rest = [];
-      } else {
-        throw new Error(
-          `有 ${spans.length} 个进行中的事件，必须传 eventName 指定收尾哪个：${spans.map((s) => `「${s.eventName}」`).join("、")}`,
-        );
-      }
-      const span = target;
-      const started = new Date(span.startedAt);
-      const endedAt = now;
-      const elapsedMs = endedAt.getTime() - started.getTime();
-      const elapsedMin = Math.round(elapsedMs / 60000);
-      // 格式化 [HH:MM-HH:MM] 事件名（备注 / 总结）
-      const fmt = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-      const head = `[${fmt(started)}-${fmt(endedAt)} 持续 ${elapsedMin} 分钟]`;
-      const finalNote = params.note ?? span.note;
-      const tailParts: string[] = [];
-      if (finalNote) tailParts.push(`（${finalNote}）`);
-      if (params.summary) tailParts.push(`— ${params.summary}`);
-      const paragraphText = `${head} ${span.eventName}${tailParts.join(" ")}`;
-
-      // 写入当前 page（不用 pition_write：时间戳由我们自己加，避免和 span head 冲突）
+      // action === "end"：状态机算出正文，这里负责写 Notion + 落盘
+      const result = endSpan(cfg, params.eventName, params.note, params.summary);
       const q = await notion(null, "POST", `/v1/databases/${binding.dbId}/query`, {
         sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
         page_size: 1,
@@ -1318,22 +814,30 @@ export default function pitionExtension(pi: ExtensionAPI) {
             {
               object: "block",
               type: "paragraph",
-              paragraph: { rich_text: [{ text: { content: paragraphText } }] },
+              paragraph: { rich_text: [{ text: { content: result.paragraphText } }] },
             },
           ],
         });
       }
-      // 从 cfg._activeSpans 移除该 span（其余保留）
-      saveConfig({ ...cfg, _activeSpans: rest });
-      const stillActive = rest.length ? `（仍在进行：${rest.map((s) => `「${s.eventName}」`).join("、")}）` : "";
+      saveConfig(result.cfg);
+      const stillActive = result.stillActive.length
+        ? `（仍在进行：${result.stillActive.map((s) => `「${s.eventName}」`).join("、")}）`
+        : "";
       return {
         content: [
           {
             type: "text",
-            text: `✅ 「${span.eventName}」已结束（持续 ${elapsedMin} 分钟），已写入「${binding.title}」当前 page。${stillActive}`,
+            text: `✅ 「${result.span.eventName}」已结束（持续 ${result.elapsedMin} 分钟），已写入「${binding.title}」当前 page。${stillActive}`,
           },
         ],
-        details: detail({ action: "end", span, pageId: latest?.id, paragraphText, elapsedMin, stillActive: rest }),
+        details: detail({
+          action: "end",
+          span: result.span,
+          pageId: latest?.id,
+          paragraphText: result.paragraphText,
+          elapsedMin: result.elapsedMin,
+          stillActive: result.stillActive,
+        }),
       };
     },
   });
@@ -1341,179 +845,3 @@ export default function pitionExtension(pi: ExtensionAPI) {
 
 // ============================================================================
 // /pition 设置向导：登录 token → 选库 → 看结构 → 补字段说明 → 保存热重载
-// ============================================================================
-
-interface DbOption {
-  id: string;
-  title: string;
-  fieldCount: number;
-}
-
-// 列出 token 可访问的库（该 integration 在 Notion 里被"连接"过的库）
-async function listDatabases(token: string): Promise<DbOption[]> {
-  const out: DbOption[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < 5; page++) {
-    const body: Record<string, unknown> = {
-      filter: { property: "object", value: "database" },
-      page_size: 100,
-    };
-    if (cursor) body.start_cursor = cursor;
-    const res = await notionWith(token, "POST", "/v1/search", body);
-    for (const r of res.results ?? []) {
-      out.push({
-        id: r.id,
-        title: (r.title ?? []).map((t: any) => t.plain_text).join("") || "(无标题)",
-        fieldCount: Object.keys(r.properties ?? {}).length,
-      });
-    }
-    if (!res.has_more) break;
-    cursor = res.next_cursor;
-  }
-  return out;
-}
-
-// 取库 schema，挑出可写字段（计算类字段过滤掉）
-async function fetchFields(token: string, dbId: string): Promise<Record<string, FieldMeta>> {
-  const db = await notionWith(token, "GET", `/v1/databases/${dbId}`);
-  const fields: Record<string, FieldMeta> = {};
-  for (const [name, prop] of Object.entries(db.properties ?? {})) {
-    const type = (prop as any).type as string;
-    if ((WRITABLE_TYPES as readonly string[]).includes(type)) {
-      fields[name] = { type, description: "" };
-    }
-  }
-  return fields;
-}
-
-async function setupWizard(ctx: any): Promise<void> {
-  const ui = ctx.ui;
-  const cfg = loadConfig() ?? { token: "", bindings: {}, currentBindingId: null };
-
-  // ---- 1. 登录：token ----
-  const existing = cfg.token ? `${cfg.token.slice(0, 8)}...${cfg.token.slice(-4)}` : "（未设置）";
-  const tokenInput = await ui.input(`Notion integration token（当前: ${existing}，回车跳过）`, "ntn_...");
-  if (tokenInput === undefined) return; // 用户取消
-  const token = tokenInput.trim() || cfg.token;
-  if (!token) {
-    ui.notify("没有 token，无法继续", "error");
-    return;
-  }
-
-  // 连通性校验
-  let whoami: any;
-  try {
-    whoami = await notionWith(token, "GET", "/v1/users/me");
-  } catch (e) {
-    ui.notify(`token 无效: ${(e as Error).message}`, "error");
-    return;
-  }
-  ui.notify(`已连接工作区「${whoami.bot?.workspace_name ?? "未知"}」`, "info");
-
-  // ---- 2. 选库 ----
-  let dbs: DbOption[];
-  try {
-    dbs = await listDatabases(token);
-  } catch (e) {
-    ui.notify(`拉取库列表失败: ${(e as Error).message}`, "error");
-    return;
-  }
-  if (!dbs.length) {
-    ui.notify("该 token 看不到任何库——请在 Notion 里把目标库「连接」到这个 integration 后重试", "warning");
-    return;
-  }
-
-  const bindingsMap = { ...cfg.bindings };
-  const bindingsList = Object.values(bindingsMap);
-  // 已绑定的标注，避免重复选
-  const boundIds = new Set(bindingsList.map((b) => b.dbId));
-  const options = dbs.map((d) => `${d.title}  (${d.fieldCount} 字段)${boundIds.has(d.id) ? " [已绑定]" : ""}`);
-  const picked = await ui.select("选择一个要作为存储的库（回车确认）", options);
-  if (picked === undefined) return;
-  const db = dbs[options.indexOf(picked)];
-
-  if (boundIds.has(db.id)) {
-    const again = await ui.confirm("该库已绑定", `「${db.title}」已配置过，重新配置字段说明？`);
-    if (!again) return;
-  }
-
-  // ---- 3. 看结构 + 4. 补字段说明 ----
-  let fields: Record<string, FieldMeta>;
-  try {
-    fields = await fetchFields(token, db.id);
-  } catch (e) {
-    ui.notify(`读取库结构失败: ${(e as Error).message}`, "error");
-    return;
-  }
-  const fieldNames = Object.keys(fields);
-  if (!fieldNames.length) {
-    ui.notify("该库没有可写字段（可能全是 formula/relation 等计算字段）", "warning");
-    return;
-  }
-
-  // 沿用已绑定的字段说明作为默认值
-  const prev = bindingsList.find((b) => b.dbId === db.id);
-  const summary = fieldNames.map((n) => `  ${n} (${fields[n].type})`).join("\n");
-  const proceed = await ui.confirm(
-    `库「${db.title}」结构（共 ${fieldNames.length} 个可写字段）`,
-    `${summary}\n\n接下来逐字段填写用途说明（回车用默认/留空）。是否继续？`,
-  );
-  if (!proceed) return;
-
-  const boundDescInput = await ui.input(
-    `库用途说明（当前: ${prev?.description ?? "无"}）`,
-    "例：个人日常记录总表，每天的内容都存这里",
-  );
-  if (boundDescInput === undefined) return;
-  const bindingDesc = boundDescInput.trim() || prev?.description || "";
-
-  for (const name of fieldNames) {
-    const prevDesc = prev?.fields?.[name]?.description ?? "";
-    const ans = await ui.input(
-      `字段「${name}」(${fields[name].type}) 的用途说明`,
-      prevDesc || "例：记录标题，一般是当天日期",
-    );
-    if (ans === undefined) return; // 中途取消 → 整次不保存
-    fields[name].description = ans.trim() || prevDesc;
-  }
-
-  // ---- 保存 + 热重载 ----
-  const newBinding: Binding = {
-    dbId: db.id,
-    title: db.title,
-    description: bindingDesc,
-    fields,
-  };
-  const finalCfg: PitionConfig = {
-    token,
-    bindings: { ...bindingsMap, [newBinding.dbId]: newBinding },
-    currentBindingId: cfg.currentBindingId ?? newBinding.dbId,
-  };
-  try {
-    saveConfig(finalCfg);
-  } catch (e) {
-    ui.notify(`写入配置失败: ${(e as Error).message}`, "error");
-    return;
-  }
-
-  const hasDesc = fieldNames.filter((n) => fields[n].description).length;
-  ui.notify(`已保存「${db.title}」（${hasDesc}/${fieldNames.length} 个字段有说明），重载中…`, "info");
-  try {
-    await ctx.reload();
-  } catch {
-    ui.notify("自动重载失败，请手动重启 pi 使新配置生效", "warning");
-  }
-}
-
-export function registerSetupCommand(pi: ExtensionAPI): void {
-  pi.registerCommand("pition", {
-    description: "配置 pition：登录 Notion → 选库 → 查看结构 → 补字段说明",
-    async handler(_args: string, ctx: any) {
-      if (!ctx.hasUI) {
-        ctx.ui.notify("设置向导需要交互式终端，请在 pi TUI 里运行 /pition", "error");
-        return;
-      }
-      await setupWizard(ctx);
-    },
-  });
-}

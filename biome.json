@@ -8,13 +8,16 @@
   "files": {
     "ignoreUnknown": true,
     "includes": [
+      "src/**/*.ts",
+      "test/**/*.ts",
       "extensions/**/*.ts",
       "index.ts",
       "scripts/**/*.mjs",
-      "*.mjs",
+      "*.js",
       "*.json",
       "!pition.config.json",
-      "!pition.config.local.json"
+      "!pition.config.local.json",
+      "!package-lock.json"
     ]
   },
   "formatter": {
@@ -37,5 +40,19 @@
       "quoteStyle": "double",
       "semicolons": "always"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "test/**/*.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    }
+  ]
 }

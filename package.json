@@ -22,22 +22,17 @@
   "bugs": {
     "url": "https://github.com/ZHLX2005/pi-pition/issues"
   },
-  "homefiles": [
-    "extensions/",
-    "index.ts",
-    "pition.config.example.json",
-    "README.md",
-    "LICENSE",
-    "AGENTS.md"
-  ],
   "files": [
+    "src/",
     "extensions/",
     "index.ts",
     "pition.config.example.json",
     "README.md",
     "LICENSE",
     "AGENTS.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md"
   ],
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.80.5",
@@ -47,15 +42,20 @@
     "@biomejs/biome": "^2.0.0",
     "@earendil-works/pi-coding-agent": "0.87.1",
     "jiti": "2.7.0",
+    "knip": "^6.38.0",
     "typebox": "1.3.27",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.9"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "smoke": "node smoke-load.mjs",
-    "lint": "biome check extensions/ index.ts scripts/",
-    "lint:fix": "biome check --write --unsafe extensions/ index.ts scripts/",
-    "check": "npm run lint && npm run typecheck && npm run smoke",
+    "lint": "biome check src/ test/ extensions/ scripts/ index.ts",
+    "lint:fix": "biome check --write --unsafe src/ test/ extensions/ scripts/ index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "knip": "knip --no-progress",
+    "smoke": "node scripts/smoke-load.mjs",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run smoke",
     "prepublishOnly": "npm run check"
   },
   "publishConfig": {

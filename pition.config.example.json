@@ -1,5 +1,4 @@
 {
-  "$schema": "./pition.config.schema.json",
   "token": "",
   "bindings": {},
   "currentBindingId": null,

@@ -68,7 +68,7 @@ export const jitiEntry = resolvePkgEntry("jiti", "lib/jiti.mjs");
 /** 建一个已配好 pi / typebox alias 的 jiti 实例（给加载扩展源码用） */
 export async function createRepoJiti() {
   const { createJiti } = await import(pathToFileURL(jitiEntry).href);
-  return createJiti(pathToFileURL(join(repoRoot, "smoke-load.mjs")).href, {
+  return createJiti(pathToFileURL(join(repoRoot, "scripts", "smoke-load.mjs")).href, {
     alias: {
       "@earendil-works/pi-coding-agent": piEntry,
       typebox: typeboxEntry,

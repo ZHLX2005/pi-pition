@@ -1,11 +1,14 @@
 // 加载冒烟：模拟 pi 的 jiti loader，验证 extensions/pition.ts 能加载并注册 tool + 设置命令
 // jiti + pi 包都从仓库自身 node_modules 拿（CI 环境走 npm ci 后能 resolve），不需要硬编码绝对路径
-import { createJiti } from "jiti";
-import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createJiti } from "jiti";
 
-const here = dirname(fileURLToPath(import.meta.url));
+// 脚本在 scripts/ 下，仓库根是上一级
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const here = join(scriptDir, "..");
 const piEntry = join(here, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "index.js");
 const typeboxEntry = join(here, "node_modules", "typebox", "build", "index.mjs");
 
@@ -16,25 +19,32 @@ const jiti = createJiti(import.meta.url, {
   },
 });
 
-const extPath = "file:///" + join(here, "extensions", "pition.ts").replace(/\\/g, "/");
+const extPath = `file:///${join(here, "extensions", "pition.ts").replace(/\\/g, "/")}`;
 
 // CI 环境没有 pition.config.json → factory 早返只注册 boot 不注册运行态 tool。
 // 临时写一个最小 cfg（覆盖真 cfg；跑完即还原）让 jiti 走完整 registerTool 路径。
 const configPath = join(here, "pition.config.json");
 const realCfgBackup = existsSync(configPath) ? readFileSync(configPath, "utf8") : null;
-writeFileSync(configPath, JSON.stringify({
-  token: "ntn_smoke_dummy_token_for_jiti_load_only",
-  bindings: {
-    "smoke-db-id-0000": {
-      dbId: "smoke-db-id-0000",
-      title: "smoke",
-      fields: {
-        Name: { type: "title", description: "smoke" },
+writeFileSync(
+  configPath,
+  JSON.stringify(
+    {
+      token: "ntn_smoke_dummy_token_for_jiti_load_only",
+      bindings: {
+        "smoke-db-id-0000": {
+          dbId: "smoke-db-id-0000",
+          title: "smoke",
+          fields: {
+            Name: { type: "title", description: "smoke" },
+          },
+        },
       },
+      currentBindingId: "smoke-db-id-0000",
     },
-  },
-  currentBindingId: "smoke-db-id-0000",
-}, null, 2));
+    null,
+    2,
+  ),
+);
 const restoreCfg = () => {
   if (realCfgBackup !== null) writeFileSync(configPath, realCfgBackup);
   else if (existsSync(configPath)) rmSync(configPath);
@@ -47,9 +57,11 @@ const tools = [];
 const commands = [];
 const listeners = [];
 const fakePi = {
-  registerTool: (t) => tools.push(t.name + " (" + Object.keys(t.parameters?.properties || {}).join("/") + ")"),
-  registerCommand: (name, opts) => commands.push(name + " — " + (opts.description || "")),
-  on: (event, handler) => { listeners.push(event); },
+  registerTool: (t) => tools.push(`${t.name} (${Object.keys(t.parameters?.properties || {}).join("/")})`),
+  registerCommand: (name, opts) => commands.push(`${name} — ${opts.description || ""}`),
+  on: (event, _handler) => {
+    listeners.push(event);
+  },
   registerShortcut: () => {},
   registerFlag: () => {},
 };
@@ -62,7 +74,7 @@ console.log("registered commands:");
 for (const c of commands) console.log("  -", c);
 
 // 契约级校验：pition_boot 必须满足 4 阶段契约
-const bootTool = (() => {
+const _bootTool = (() => {
   const captures = [];
   const probe = {
     registerTool: (t) => captures.push(t),
@@ -83,8 +95,13 @@ if (!bootDef) {
 const probeMod = await jiti.import(extPath);
 const bootCaptured = [];
 probeMod.default({
-  registerTool: (t) => { if (t.name === "pition_boot") bootCaptured.push(t); },
-  registerCommand: () => {}, on: () => () => {}, registerShortcut: () => {}, registerFlag: () => {},
+  registerTool: (t) => {
+    if (t.name === "pition_boot") bootCaptured.push(t);
+  },
+  registerCommand: () => {},
+  on: () => () => {},
+  registerShortcut: () => {},
+  registerFlag: () => {},
 });
 const def = bootCaptured[0];
 const stages = def.parameters?.properties?.stage?.anyOf?.map((s) => s.const) ?? [];
@@ -110,8 +127,15 @@ console.log("pition_boot 5 阶段契约校验通过 (token / select_db / describ
 // 6 tool：1 个元工具（pition_boot）+ 5 个运行态 tool（pition_create_today / pition_read / pition_write / pition_history / pition_span）
 // pition_stores 已删（description 静态拼 storeCtx → 切库后看到旧字段名）；
 // pition_query 已删（与 pition_history 实现完全重复，统一用 history）。
-const expectedTools = ["pition_boot", "pition_create_today", "pition_read", "pition_write", "pition_history", "pition_span"];
-const missing = expectedTools.filter((n) => !tools.some((line) => line.startsWith(n + " ")));
+const expectedTools = [
+  "pition_boot",
+  "pition_create_today",
+  "pition_read",
+  "pition_write",
+  "pition_history",
+  "pition_span",
+];
+const missing = expectedTools.filter((n) => !tools.some((line) => line.startsWith(`${n} `)));
 if (missing.length) {
   console.error(`FAIL: 缺少 tool: ${missing.join(", ")}`);
   process.exit(1);
@@ -143,18 +167,20 @@ const handlers = {};
 const probePi = {
   registerTool: () => {},
   registerCommand: () => {},
-  on: (event, handler) => { handlers[event] = handler; },
+  on: (event, handler) => {
+    handlers[event] = handler;
+  },
   registerShortcut: () => {},
   registerFlag: () => {},
 };
 const handlerProbeMod = await jiti.import(extPath);
 handlerProbeMod.default(probePi);
-if (!handlers["before_agent_start"]) {
+if (!handlers.before_agent_start) {
   console.error("FAIL: before_agent_start handler 没注册");
   process.exit(1);
 }
 try {
-  await handlers["before_agent_start"]({
+  await handlers.before_agent_start({
     systemPromptOptions: { promptGuidelines: [], sections: {} },
   });
   console.log("before_agent_start handler 真跑通过（无 ReferenceError）");
