@@ -50,6 +50,8 @@ cd pi-pition && npm install
 
 所有运行态 tool **无条件注册**——没绑定库时调用会得到清晰错误，指引 agent 去走 `pition_boot`。
 
+**每个 tool 的完整参数语义见 [`docs/tools.md`](docs/tools.md)。**
+
 ### `pition_boot` 5 阶段契约
 
 ```ts

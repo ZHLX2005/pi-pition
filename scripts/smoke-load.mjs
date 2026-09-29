@@ -73,19 +73,7 @@ for (const t of tools) console.log("  -", t);
 console.log("registered commands:");
 for (const c of commands) console.log("  -", c);
 
-// 契约级校验：pition_boot 必须满足 4 阶段契约
-const _bootTool = (() => {
-  const captures = [];
-  const probe = {
-    registerTool: (t) => captures.push(t),
-    registerCommand: () => {},
-    on: () => () => {},
-    registerShortcut: () => {},
-    registerFlag: () => {},
-  };
-  return { captures, probe };
-})();
-// 用首次注册的同名 tool 校验 stage 取值
+// 契约级校验：pition_boot 必须满足 5 阶段契约
 const bootDef = tools.find((t) => t.startsWith("pition_boot "));
 if (!bootDef) {
   console.error("FAIL: 未注册 pition_boot 元工具");

@@ -24,6 +24,7 @@
   },
   "files": [
     "src/",
+    "docs/",
     "extensions/",
     "index.ts",
     "pition.config.example.json",

@@ -24,6 +24,10 @@ jobs:
       # 单步复用聚合命令 —— 往 check 里加门，CI 自动跟着跑（避免两处漂移）
       - name: Full check (lint + typecheck + test + smoke)
         run: npm run check
+      # 死代码 / 未使用导出检测：本机 Windows 上 oxc-parser 有 ArrayBuffer 分配问题，
+      # 故只在 Linux CI 跑，不并入 npm run check。
+      - name: Dead code scan (knip)
+        run: npm run knip
 
   # peer 范围 floor 验证：用 pi 仓库声称的最低版本试加载
   compat-floor-pi:

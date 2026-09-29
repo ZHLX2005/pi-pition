@@ -39,7 +39,7 @@ scripts/dev/         本机开发/诊断脚本（不进 npm 包）
 ```bash
 npm run check        # 四门：lint → typecheck → test → smoke（提交前必跑）
 npm run lint:fix     # biome 自动修复
-npm test             # vitest（69 个用例）
+npm test             # vitest（单元 + 集成）
 npm run test:watch   # 监听模式
 node scripts/dev/diag-session.mjs   # 本机 pi 会话装配诊断（需先 npm install）
 ```
