@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-01
+
+### Fixed
+
+- **`pition_goal` set 拒绝未来日期**（线上实症：凌晨对话模型算错今天日期，set 带了未来的 `date`——goal 落盘到未来，而 list/注入只渲染今天，表现为「每日目标设完 1 分钟后消失」）。set 时即报错并提示今天日期，不落不可见毒丸。
+- `list` 为空时自诊断：附插件内现存 goal 的 date 分区（「若有目标但日期不是今天，说明 set 时 date 传错了」），agent 可直接引导修复。
+
 ## [0.3.0] - 2026-10-01
 
 ### Added
