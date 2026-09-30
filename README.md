@@ -28,6 +28,10 @@ pi install npm:@flowot/pi-pition
 
 装完在 pi TUI 里跑 `/pition` 走配置向导（或让 agent 调 `pition_boot`），配完立即可用。
 
+### 配置存哪、为什么升级不丢
+
+配置持久化在 **pi agent 目录**的 `extensions/pition.config.json`（默认 `~/.pi/agent/extensions/`，`PI_CODING_AGENT_DIR` 可覆盖）——在 npm 包外，重装/升级 `pi install npm:@flowot/pi-pition` 不会清掉；容器/服务器场景只挂载 pi agent 目录即可带上配置。旧版本存在包内（node_modules）的配置会在首次加载时自动迁移到上述位置。开发仓库 / `install.mjs` 物化形态下配置仍在原处（扩展目录向上查找优先）。
+
 开发 / 源码方式：
 
 ```bash
@@ -154,9 +158,9 @@ formula / relation / rollup 等计算类字段不可写，不要放进配置。
 - token 只在本机被 pi 进程读取，向导不向任何第三方上传
 - 换库 / 换 token / 看状态 → `pition_boot stage=done`
 
-## nx-as 物化形态（可选）
+## 物化安装（可选，装到 pi agent 目录）
 
-`node scripts/install.mjs` 把 `extensions/pition.ts` + 配置复制到 `~/.nx-as/pi-agent/extensions/`（pi-agent 隔离环境用）；一般用户不需要。
+`node scripts/install.mjs` 把 `extensions/pition.ts` + 配置复制到 `<pi-agent-dir>/extensions/`（默认 `~/.pi/agent`，`--agent-dir` 可指定）；一般 npm 安装用户不需要。
 
 ## 开发
 

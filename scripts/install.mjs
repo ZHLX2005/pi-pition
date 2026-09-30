@@ -4,7 +4,7 @@
 // 用法：
 //   node scripts/install.mjs                          # 用同目录 pition.config.json 安装到默认位置
 //   node scripts/install.mjs --config ./my.json       # 指定配置文件
-//   node scripts/install.mjs --agent-dir ~/.pi/agent  # 指定 pi agent 目录（默认 ~/.nx-as/pi-agent）
+//   node scripts/install.mjs --agent-dir ~/.pi/agent  # 指定 pi agent 目录（默认 ~/.pi/agent）
 //
 // 安装内容：
 //   <agent-dir>/extensions/pition.ts           ← 本包 extensions/pition.ts（复制）
@@ -26,7 +26,7 @@ function flag(name) {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const configFile = resolve(flag("config") || join(here, "pition.config.json"));
-const agentDir = resolve(flag("agent-dir") || join(homedir(), ".nx-as", "pi-agent"));
+const agentDir = resolve(flag("agent-dir") || join(homedir(), ".pi", "agent"));
 
 // ---- 读配置 ----
 if (!existsSync(configFile)) {
@@ -101,4 +101,4 @@ console.log(
   `  已描述库: ${boundList.length ? boundList.map((b) => b.title).join("、") : "（无）"}` +
     (current ? `；当前库: ${current.title}` : "；未选当前库（agent 调 pition_boot stage=select_db）"),
 );
-console.log("\n重启 pi 会话（或 nx-as serve）后生效。");
+console.log("\n重启 pi 会话后生效。");

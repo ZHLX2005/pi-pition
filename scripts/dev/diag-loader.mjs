@@ -9,7 +9,7 @@ import { piEntry, REPO_ROOT } from "./resolve-pi.mjs";
 
 const pi = await import(pathToFileURL(piEntry).href);
 
-// agentDir 可用 PI_CODING_AGENT_DIR 覆盖（nx-as 隔离环境用）；cwd 默认本仓库
+// agentDir 可用 PI_CODING_AGENT_DIR 覆盖（隔离环境/容器用）；cwd 默认本仓库
 const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
 const cwd = REPO_ROOT;
 

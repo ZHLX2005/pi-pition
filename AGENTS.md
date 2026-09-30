@@ -49,5 +49,5 @@ node scripts/dev/diag-session.mjs   # SDK 会话装配诊断（需先 npm instal
 | 工厂期用 cfg 做注册门禁 → 会话中现配的库看不到运行态 tool | 6 个 tool 无条件注册；execute 内 `currentBinding()` 抛错指引 |
 | npm publish 本地返回 `+` 但服务端 404（CDN 延迟/静默拒收） | 必须 `npm view` 验证；同版本重发报 403 就 bump |
 | `NODE_AUTH_TOKEN` 新版 npm 不认 | release.yml 里写 `~/.npmrc` |
-| smoke-load 依赖本机 nx-as 绝对路径 | 已改为 node_modules 相对解析 + 临时 cfg |
+| smoke-load 依赖本机绝对路径 | 已改为 node_modules 相对解析 + 临时 cfg + PITION_CONFIG 隔离 |
 | 中文注释在编辑器转码出现 mojibake | 发现即修；ASCII 安全的标识符优先 |

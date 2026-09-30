@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-30
+
+### Fixed
+
+- **npm 重装/升级后 Notion 配置丢失**。根因：配置定位在包根（node_modules 内），`pi install` 重装即清空。
+  修复：配置持久化家改为 **pi agent 目录** `<agent-dir>/extensions/pition.config.json`（默认 `~/.pi/agent/extensions/`，`PI_CODING_AGENT_DIR` 可覆盖）——包外位置，重装/升级不再丢；容器场景只挂载 pi agent 目录即可。存量 node_modules 内的配置在首次加载时自动迁移（幂等；迁移失败仍用旧路径）。仓库开发模式与 `install.mjs` 物化形态的定位不变（扩展目录向上查找优先）。
+  设计对齐：pi-tasks（配置落 `<agent-dir>` + 写前 `mkdirSync`）、pi-fabric（`src/core/agent-dir.ts` 本地镜像 `getAgentDir` 的先例，含 `~` 展开规则）。
+
+### Changed
+
+- `scripts/install.mjs` 默认 agent 目录改为 `~/.pi/agent`（与 pi 官方约定一致）；`scripts/dev/install-all.mjs` 移除额外的沙箱目录分支。
+- README 安装节补「配置存哪、为什么升级不丢」；SECURITY.md 敏感数据表更新配置位置。
+
 ## [0.2.2] - 2026-09-30
 
 ### Fixed

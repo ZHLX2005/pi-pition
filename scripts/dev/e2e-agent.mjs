@@ -13,7 +13,7 @@
  *   - pition.config.json 已配好（token + bindings）——E2E 会真的写 Notion
  *
  * 说明:
- *   模型通过 pi 的 registerProvider 动态注册（不需要 nx-as 的 store.json）。
+ *   模型通过 pi 的 registerProvider 动态注册（如果 pi 已配好默认 provider 则无需环境变量）。
  *   如果你的 pi 已配好默认 provider，不传环境变量也能跑（用 pi 默认模型）。
  */
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";

@@ -1,15 +1,10 @@
 #!/usr/bin/env node
 // install-all.mjs — 一键装到本机 pi agent 实例（默认只装用户主 pi）
 //
-// 默认扫描 { ~/.pi/agent }。nx-as 隔离沙箱（~/.nx-as/pi-agent）默认不装 —
-// 它有自己的 token 注入链路（web 面板后台写入），手装反而会和它打架。
-// 确实要装 nx-as 的话，加 --with-nx-as。
-//
-// 其它自定义目录用 --agent-dir 追加（逗号分隔）。
+// 默认扫描 { ~/.pi/agent }。其它自定义目录用 --agent-dir 追加（逗号分隔）。
 //
 // 用法：
 //   node install-all.mjs                          # 默认装 ~/.pi/agent
-//   node install-all.mjs --with-nx-as             # 顺带装 ~/.nx-as/pi-agent
 //   node install-all.mjs --config ./my.json       # 指定配置
 //   node install-all.mjs --agent-dir /custom      # 追加目录（可多次）
 //
@@ -33,7 +28,6 @@ function flag(name) {
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const here = resolve(scriptDir, "..", ".."); // 仓库根（脚本在 scripts/dev/ 下）
 const configFile = resolve((flag("config") ?? [""])[0] || join(here, "pition.config.json"));
-const withNxAs = args.includes("--with-nx-as");
 const extraDirs = (flag("agent-dir") ?? []).flatMap((v) =>
   v
     .split(",")
@@ -43,7 +37,6 @@ const extraDirs = (flag("agent-dir") ?? []).flatMap((v) =>
 
 // ---- 默认只扫用户主 pi ----
 const DEFAULT_DIRS = [join(homedir(), ".pi", "agent")];
-if (withNxAs) DEFAULT_DIRS.push(join(homedir(), ".nx-as", "pi-agent"));
 
 const targets = [...DEFAULT_DIRS, ...extraDirs];
 
@@ -114,7 +107,7 @@ const candidates = targets.filter(isPiAgent);
 const skipped = targets.filter((d) => !candidates.includes(d));
 
 if (!candidates.length) {
-  console.error("✗ 没找到任何 pi agent 实例（检查 ~/.pi/agent 和 ~/.nx-as/pi-agent 是否存在 + 含 settings.json）");
+  console.error("✗ 没找到任何 pi agent 实例（检查 ~/.pi/agent 是否存在 + 含 settings.json/extensions/auth.json）");
   console.error("  提示：用 --agent-dir <path> 手动追加目标目录");
   process.exit(1);
 }

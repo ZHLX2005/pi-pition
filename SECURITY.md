@@ -8,7 +8,7 @@ pition 是一个**单用户、本机运行**的 pi 扩展。它在 pi 进程内�
 
 | 数据 | 位置 | 保护 |
 | --- | --- | --- |
-| Notion integration token | `pition.config.json` | **明文落盘**，靠 `.gitignore` 防提交；文件权限由 OS 决定 |
+| Notion integration token | `<pi-agent-dir>/extensions/pition.config.json`（默认 `~/.pi/agent/extensions/`，`PI_CODING_AGENT_DIR` 可覆盖） | **明文落盘**，靠 `.gitignore` 防提交；文件权限由 OS 决定 |
 | 用户记录内容 | 用户自己的 Notion 数据库 | 由 Notion 侧权限控制 |
 
 **token 明文是刻意的取舍**：单用户本机工具，加密只会把密钥放到同一台机器上，
