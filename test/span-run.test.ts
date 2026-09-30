@@ -10,6 +10,7 @@ vi.mock("../src/notion.ts", () => ({
   notion: vi.fn(),
 }));
 
+import { todayYmd } from "../src/goal.ts";
 import { notion } from "../src/notion.ts";
 import { runSpan } from "../src/tools/span-run.ts";
 import type { PitionConfig } from "../src/types.ts";
@@ -48,22 +49,23 @@ function writeCfg(partial: Partial<PitionConfig>): PitionConfig {
 
 const BINDING = { dbId: "d1", title: "日常", fields: { Name: { type: "title" } } };
 
+// goal 的 date 必须是「运行时的今天」——CI 跑在 UTC，硬编码北京日期会定位不到
+const goalOfToday = (goalId: string, itemName: string) => ({
+  goalId,
+  title: "今日锻炼计划",
+  period: "day" as const,
+  date: todayYmd(),
+  items: [{ name: itemName, target: 4, progress: 0, unit: "轮" }],
+  createdAt: `${todayYmd()}T14:00:00.000+08:00`,
+});
+
 describe("runSpan end 联动 goal", () => {
   it("end 带 goalItemName：推进 goal 且**不复活已结束的 span**", async () => {
     writeCfg({
       bindings: { d1: BINDING },
       currentBindingId: "d1",
-      _activeSpans: [{ spanId: "s1", eventName: "俯卧撑", startedAt: new Date(2026, 9, 1, 14, 0, 0).toISOString() }],
-      _activeGoals: [
-        {
-          goalId: "g1",
-          title: "今日锻炼计划",
-          period: "day",
-          date: "2026-10-01",
-          items: [{ name: "俯卧撑", target: 4, progress: 0, unit: "轮" }],
-          createdAt: "2026-10-01T14:00:00.000+08:00",
-        },
-      ],
+      _activeSpans: [{ spanId: "s1", eventName: "俯卧撑", startedAt: new Date().toISOString() }],
+      _activeGoals: [goalOfToday("g1", "俯卧撑")],
     });
     const r = await runSpan({ action: "end", eventName: "俯卧撑", goalItemName: "俯卧撑", goalDelta: 1 });
     expect(r.content[0].text).toContain("已结束");
@@ -78,17 +80,8 @@ describe("runSpan end 联动 goal", () => {
     writeCfg({
       bindings: { d1: BINDING },
       currentBindingId: "d1",
-      _activeSpans: [{ spanId: "s1", eventName: "跑步", startedAt: new Date(2026, 9, 1, 14, 0, 0).toISOString() }],
-      _activeGoals: [
-        {
-          goalId: "g1",
-          title: "今日锻炼计划",
-          period: "day",
-          date: "2026-10-01",
-          items: [{ name: "俯卧撑", target: 4, progress: 0, unit: "轮" }],
-          createdAt: "2026-10-01T14:00:00.000+08:00",
-        },
-      ],
+      _activeSpans: [{ spanId: "s1", eventName: "跑步", startedAt: new Date().toISOString() }],
+      _activeGoals: [goalOfToday("g1", "俯卧撑")],
     });
     const r = await runSpan({ action: "end", eventName: "跑步", goalItemName: "深蹲" });
     expect(r.content[0].text).toContain("已结束");
@@ -99,7 +92,6 @@ describe("runSpan end 联动 goal", () => {
   });
 
   it("end 秒级文案（<1 分钟显示秒）", async () => {
-    writeCfg({ bindings: { d1: BINDING }, currentBindingId: "d1" });
     // startedAt 用「当前时间前 47 秒」——跨午夜/固定日期都安全
     const started = new Date(Date.now() - 47_000);
     writeCfg({
