@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-01
+
+### Added
+
+- **`pition_goal`：每日目标 tool（第 7 个 tool，完整 CRUD + 进度控制）**。
+  可量化条目列表（俯卧撑 4 轮）、5 个 action（set/progress/list/update/delete）、
+  进度三模式（delta 加法默认 1 / value 绝对值 / reset 归零）、自动周期（daily 或 5 段 cron，跨天自动归零重开无需人工重置）、
+  绑定字段看板展示（进度摘要覆写，✅ 全达标前缀，可选投影——冷设置/无 page/写入失败不影响 goal 本体）、
+  未配置 Notion 全功能可用（冷设置，进度存插件内部 `_activeGoals`）。
+  需求与决策记录：`docs/goal-requirements.md`。
+- **span 秒级精度**：`[14:32:15-14:33:02 持续 47 秒]`（原分钟粒度）；span 注入文案同步秒级（「已 47 秒」）。适配单轮 <1 分钟的训练场景。
+- **span end 联动 goal**：`pition_span action=end` 新增可选 `goalItemName`/`goalDelta`——收尾 span 同时推进今日目标条目（数字加法；end 不结束 goal）；联动失败不影响 span 落盘。
+- **goal 动态自检查**：连续 ≥2 天零活动的周期目标，注入时附「⚠️ 已连续 N 天未执行——询问用户是否调整」；全部达标后指引回看本月完成情况（pition_history）。
+- `pition_goal` 进度每次对话注入全局提示词 `pition_goal` section（实际数字，自动物化跨天实例并落盘）。
+
+### Fixed
+
+- `/pition-mode` 切换重建配置时丢失 `_activeSpans`/`_activeGoals`（改展开保留全部字段）。
+
+### Changed
+
+- `formatSpanRange` 输出秒级时钟；`formatElapsed`（新导出）渲染「47 秒 / 3 分 20 秒 / 1 时 5 分」。
+
 ## [0.2.3] - 2026-09-30
 
 ### Fixed

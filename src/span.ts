@@ -5,7 +5,7 @@
 //   - **支持并行多个事件**（边养神边听歌是真实生活）——_activeSpans 是数组
 //   - **无需心跳**：累计时长由 startedAt 现算（每次 before_agent_start 重算），跨轮次自动增长
 //   - **end 需精确指定**：有多个进行中事件时必须传 eventName，否则报错列出全部
-import { formatSpanRange, toLocalIsoString } from "./time.ts";
+import { formatElapsed, formatSpanRange, toLocalIsoString } from "./time.ts";
 import type { ActiveSpan, PitionConfig } from "./types.ts";
 
 /** 生成唯一 span id（时间戳 + 随机后缀，无需 uuid 依赖） */
@@ -33,9 +33,11 @@ export function startSpan(
 interface EndSpanResult {
   cfg: PitionConfig;
   span: ActiveSpan;
-  /** 要写进 Notion 的整段正文，如 `[14:32-15:00 持续 28 分钟] 跑步（公园）— 感觉很好` */
+  /** 要写进 Notion 的整段正文，如 `[14:32:15-15:00:20 持续 28 分 5 秒] 跑步（公园）— 感觉很好` */
   paragraphText: string;
   elapsedMin: number;
+  /** 秒级时长文案（「47 秒」「3 分 20 秒」）——goal 场景单轮常 <1 分钟 */
+  elapsedText: string;
   /** 收尾后仍在进行的事件 */
   stillActive: ActiveSpan[];
 }
@@ -78,6 +80,7 @@ export function endSpan(
     span: target,
     paragraphText: `${head} ${target.eventName}${tail.join("")}`,
     elapsedMin: Math.round((now.getTime() - started.getTime()) / 60000),
+    elapsedText: formatElapsed(now.getTime() - started.getTime()),
     stillActive: rest,
   };
 }
@@ -96,10 +99,10 @@ export function endSpan(
 export function renderSpansStatus(spans: ActiveSpan[], now: Date = new Date()): string {
   const lines = spans.map((span) => {
     const started = new Date(span.startedAt).getTime();
-    const elapsedMin = Math.max(0, Math.round((now.getTime() - started) / 60000));
+    const elapsed = formatElapsed(Math.max(0, now.getTime() - started));
     const noteSuffix = span.note ? `（${span.note}）` : "";
     const clock = new Date(started).toTimeString().slice(0, 5);
-    return `- ${span.eventName}${noteSuffix}，已 ${elapsedMin} 分钟（${clock} 开始）`;
+    return `- ${span.eventName}${noteSuffix}，已 ${elapsed}（${clock} 开始）`;
   });
   return `📍 进行中 ${spans.length} 件事：\n${lines.join("\n")}\n   结束某个：调 pition_span action=end eventName=<事件名>。`;
 }

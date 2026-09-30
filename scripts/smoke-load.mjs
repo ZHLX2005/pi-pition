@@ -116,12 +116,13 @@ if (!setModeProps.includes("enabled")) {
 }
 console.log("pition_boot 5 阶段契约校验通过 (token / select_db / describe_fields / set_mode / done)");
 
-// 6 tool：1 个元工具（pition_boot）+ 5 个运行态 tool（pition_create_today / pition_read / pition_write / pition_history / pition_span）
+// 7 tool：1 个元工具（pition_boot）+ 6 个运行态 tool
 // pition_stores 已删（description 静态拼 storeCtx → 切库后看到旧字段名）；
 // pition_query 已删（与 pition_history 实现完全重复，统一用 history）。
 const expectedTools = [
   "pition_boot",
   "pition_create_today",
+  "pition_goal",
   "pition_read",
   "pition_write",
   "pition_history",

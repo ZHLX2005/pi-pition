@@ -11,6 +11,7 @@ export function defineSpanTool() {
       "用户开始/进入一个有时长的事件（「开始跑步」「开始午休」「开始开会」）→ 调 pition_span action=start（带事件名 + 可选备注）。用户开始新事件时**不要**要求先结束旧事件——事件可并行。",
       "进行中的事件（可能多件）会自动出现在全局提示词的 pition_span section（实际时长数字，每次对话自动更新），不需要也不存在 heartbeat 调用。",
       "用户说结束 / 完成 / 出来了 / 感受 → 调 pition_span action=end（带 eventName 精确收尾那件事；事件名 / 备注 / 感受会被合并进正文写入当前 page）。",
+      "今日有目标（全局提示词的 pition_goal section 非空）且刚结束的正是目标条目的一轮训练 → end 带上 goalItemName + goalDelta 自动推进进度（如第 2 轮结束：goalItemName=俯卧撑, goalDelta=1）——不要再单独调 pition_goal action=progress。",
       "**不要**用 pition_write 写『开始跑步』或『结束跑步』这类有开始+结束的事件——用 pition_span 记录整段。",
     ],
     parameters: Type.Object({
@@ -24,6 +25,13 @@ export function defineSpanTool() {
       ),
       note: Type.Optional(Type.String({ description: "可选备注（action=start 时设定；end 时可补充感受/收尾说明）" })),
       summary: Type.Optional(Type.String({ description: "action=end 时可选：事后总结/感受/结果，合并进正文" })),
+      goalItemName: Type.Optional(
+        Type.String({
+          description:
+            "action=end 可选：今日目标条目名——收尾后把 goalDelta 加到该条目进度（数字加法）。end 不结束 goal，只推进。",
+        }),
+      ),
+      goalDelta: Type.Optional(Type.Number({ description: "action=end 可选：goalItemName 的推进量，默认 1" })),
     }),
     async execute(_id: string, params: any) {
       return runSpan(params);

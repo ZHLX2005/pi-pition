@@ -9,7 +9,7 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ActiveSpan, Binding, PitionConfig } from "./types.ts";
+import type { ActiveGoal, ActiveSpan, Binding, PitionConfig } from "./types.ts";
 
 /** 配置文件名 */
 const CONFIG_FILENAME = "pition.config.json";
@@ -118,6 +118,7 @@ export function normalizeConfig(raw: unknown): PitionConfig | null {
     currentBindingId,
     _assistantMode: r._assistantMode,
     _activeSpans: activeSpans,
+    _activeGoals: Array.isArray(r._activeGoals) ? r._activeGoals : undefined,
   };
 }
 
@@ -154,4 +155,9 @@ export function currentBinding(load: () => PitionConfig | null = loadConfig): Bi
 /** 运行态 span 解析：每次 before_agent_start 都重读（支持并行多事件） */
 export function currentSpans(load: () => PitionConfig | null = loadConfig): ActiveSpan[] {
   return load()?._activeSpans ?? [];
+}
+
+/** 运行态 goal 解析：每次 before_agent_start 都重读（无自动清理，按 date 分区） */
+export function currentGoals(load: () => PitionConfig | null = loadConfig): ActiveGoal[] {
+  return load()?._activeGoals ?? [];
 }

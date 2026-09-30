@@ -1,5 +1,6 @@
 // pition_span 的实现：区间事件 —— start 落盘、end 收尾并把整段写入当前 page。
 import { currentBinding, loadConfig, saveConfig } from "../config.ts";
+import { progressGoal } from "../goal.ts";
 import { notion } from "../notion.ts";
 import { endSpan, startSpan } from "../span.ts";
 import { detail, type SpanParams, type ToolResponse } from "../types.ts";
@@ -32,7 +33,9 @@ export async function runSpan(params: SpanParams): Promise<ToolResponse> {
     page_size: 1,
   });
   const latest = (q.results as any[])[0];
+  let pageId: string | undefined;
   if (latest) {
+    pageId = latest.id;
     await notion(null, "PATCH", `/v1/blocks/${latest.id}/children`, {
       children: [
         {
@@ -44,6 +47,28 @@ export async function runSpan(params: SpanParams): Promise<ToolResponse> {
     });
   }
   saveConfig(result.cfg);
+
+  // —— goal 联动（D1：end 不结束 goal，只对条目做数字加法）——
+  // 放在 span 落盘之后：联动失败/未命中绝不影响 span 本身（正文已写入、cfg 已保存）。
+  // 关键：基于 result.cfg（endSpan 已剔除该 span）推进，progressGoal 返回的新 cfg
+  // 才不会把刚结束的 span 复活回磁盘。
+  let goalNote = "";
+  if (params.goalItemName) {
+    try {
+      const g = progressGoal(result.cfg, {
+        goalId: undefined,
+        itemName: params.goalItemName,
+        delta: params.goalDelta,
+      });
+      saveConfig(g.cfg);
+      goalNote = `\n📈 目标「${g.item.name}」推进到 ${g.item.progress}/${g.item.target}${g.item.unit ? ` ${g.item.unit}` : ""}，整体 ${g.percent}%${
+        g.completed ? " 🎉 今日目标全部完成！" : ""
+      }`;
+    } catch (e) {
+      goalNote = `\n（目标推进未生效: ${(e as Error).message}——可用 pition_goal action=list 查看今日条目）`;
+    }
+  }
+
   const stillActive = result.stillActive.length
     ? `（仍在进行：${result.stillActive.map((s) => `「${s.eventName}」`).join("、")}）`
     : "";
@@ -51,15 +76,16 @@ export async function runSpan(params: SpanParams): Promise<ToolResponse> {
     content: [
       {
         type: "text",
-        text: `✅ 「${result.span.eventName}」已结束（持续 ${result.elapsedMin} 分钟），已写入「${binding.title}」当前 page。${stillActive}`,
+        text: `✅ 「${result.span.eventName}」已结束（持续 ${result.elapsedText}），已写入「${binding.title}」当前 page。${stillActive}${goalNote}`,
       },
     ],
     details: detail({
       action: "end",
       span: result.span,
-      pageId: latest?.id,
+      pageId,
       paragraphText: result.paragraphText,
       elapsedMin: result.elapsedMin,
+      elapsedText: result.elapsedText,
       stillActive: result.stillActive,
     }),
   };

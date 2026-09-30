@@ -17,6 +17,7 @@ import {
   buildBootCtx,
   defineBootTool,
   defineCreateTodayTool,
+  defineGoalTool,
   defineHistoryTool,
   defineReadTool,
   defineSpanTool,
@@ -51,6 +52,7 @@ export default function pitionExtension(pi: ExtensionAPI) {
   const tools = [
     defineBootTool({ bootCtx: buildBootCtx(roleState.cfg), setRoleMode }),
     defineCreateTodayTool(),
+    defineGoalTool(),
     defineReadTool(),
     defineWriteTool(),
     defineHistoryTool(),

@@ -50,7 +50,8 @@ cd pi-pition && npm install
 | `pition_read` | 读当前 page 完整内容（properties + 所有正文 block） |
 | `pition_history` | 翻旧账查 page 列表（带单字段过滤）；日常不调 |
 | `pition_create_today` | **逃生口**：定时任务挂了自己手动建 page（默认不调） |
-| `pition_span` | **区间事件**：`start` / `end`（跑步、开会、午休）；支持**并行多个**，结束才落 Notion，进行中持续注入全局提示词 |
+| `pition_span` | **区间事件**：`start` / `end`（跑步、开会、午休）；支持**并行多个**，秒级时长，结束才落 Notion，进行中持续注入全局提示词；`end` 可带 `goalItemName`/`goalDelta` 自动推进今日目标 |
+| `pition_goal` | **每日目标**：完整 CRUD + 进度控制（可量化条目列表，如 俯卧撑 4 轮）；进度每次对话自动注入；自动周期 daily/cron 跨天自动归零重开；可绑 Notion 字段做看板展示；未配置 Notion 也可用（冷设置） |
 
 所有运行态 tool **无条件注册**——没绑定库时调用会得到清晰错误，指引 agent 去走 `pition_boot`。
 

@@ -70,11 +70,23 @@ export function toLocalIsoString(d: Date): string {
   return `${ymd}T${hh}:${mm}:${ss}.${ms}${sign}${offHH}:${offMM}`;
 }
 
-/** Date → "[HH:MM-HH:MM 持续 N 分钟]"（区间事件用） */
+/** 毫秒 → 人类可读时长：`45 秒` / `3 分 20 秒` / `1 时 5 分`（goal 场景单轮常 <1 分钟，秒级必需） */
+export function formatElapsed(ms: number): string {
+  const totalSec = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return m > 0 ? `${h} 时 ${m} 分` : `${h} 时`;
+  if (m > 0) return s > 0 ? `${m} 分 ${s} 秒` : `${m} 分`;
+  return `${s} 秒`;
+}
+
+/** Date → "[HH:MM:SS-HH:MM:SS 持续 ...]"（区间事件用；秒级——锻炼单轮常 <1 分钟） */
 export function formatSpanRange(started: Date, ended: Date): string {
-  const elapsedMin = Math.round((ended.getTime() - started.getTime()) / 60000);
-  const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  return `[${hhmm(started)}-${hhmm(ended)} 持续 ${elapsedMin} 分钟]`;
+  const hhmmss = (d: Date) =>
+    `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+  const elapsed = formatElapsed(ended.getTime() - started.getTime());
+  return `[${hhmmss(started)}-${hhmmss(ended)} 持续 ${elapsed}]`;
 }
 
 /** 把 YYYY-MM-DD 补进 properties 里 type=date 的字段（agent 未传 date 时回填） */

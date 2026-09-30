@@ -35,13 +35,21 @@ describe("startSpan", () => {
 });
 
 describe("endSpan", () => {
-  it("产出 [起-止 持续 N 分钟] 正文并移除该 span", () => {
-    const { cfg } = startSpan(baseCfg(), "跑步", "公园 5 公里", new Date(2026, 8, 29, 14, 32));
-    const r = endSpan(cfg, "跑步", undefined, "感觉很好", new Date(2026, 8, 29, 15, 0));
-    expect(r.paragraphText).toBe("[14:32-15:00 持续 28 分钟] 跑步（公园 5 公里）— 感觉很好");
+  it("产出 [起-止 持续 ...] 正文并移除该 span", () => {
+    const { cfg } = startSpan(baseCfg(), "跑步", "公园 5 公里", new Date(2026, 8, 29, 14, 32, 0));
+    const r = endSpan(cfg, "跑步", undefined, "感觉很好", new Date(2026, 8, 29, 15, 0, 0));
+    expect(r.paragraphText).toBe("[14:32:00-15:00:00 持续 28 分] 跑步（公园 5 公里）— 感觉很好");
     expect(r.elapsedMin).toBe(28);
+    expect(r.elapsedText).toBe("28 分");
     expect(r.cfg._activeSpans).toEqual([]);
     expect(r.stillActive).toEqual([]);
+  });
+
+  it("秒级 span：47 秒的轮次", () => {
+    const { cfg } = startSpan(baseCfg(), "俯卧撑", undefined, new Date(2026, 8, 29, 14, 32, 15));
+    const r = endSpan(cfg, "俯卧撑", undefined, undefined, new Date(2026, 8, 29, 14, 33, 2));
+    expect(r.paragraphText).toContain("[14:32:15-14:33:02 持续 47 秒]");
+    expect(r.elapsedText).toBe("47 秒");
   });
 
   it("并行 span 中只结束指定的那个，其余进 stillActive", () => {
@@ -81,16 +89,16 @@ describe("endSpan", () => {
 });
 
 describe("renderSpansStatus", () => {
-  it("渲染多事件 + 已持续分钟 + 操作指引", () => {
-    const now = new Date(2026, 8, 29, 14, 30);
+  it("渲染多事件 + 已持续时长（秒级）+ 操作指引", () => {
+    const now = new Date(2026, 8, 29, 14, 30, 0);
     const spans = [
-      { spanId: "a", eventName: "跑步", note: "公园", startedAt: new Date(2026, 8, 29, 14, 0).toISOString() },
-      { spanId: "b", eventName: "听歌", startedAt: new Date(2026, 8, 29, 14, 15).toISOString() },
+      { spanId: "a", eventName: "跑步", note: "公园", startedAt: new Date(2026, 8, 29, 14, 0, 0).toISOString() },
+      { spanId: "b", eventName: "听歌", startedAt: new Date(2026, 8, 29, 14, 15, 0).toISOString() },
     ];
     const text = renderSpansStatus(spans, now);
     expect(text).toContain("进行中 2 件事");
-    expect(text).toContain("跑步（公园），已 30 分钟");
-    expect(text).toContain("听歌，已 15 分钟");
+    expect(text).toContain("跑步（公园），已 30 分");
+    expect(text).toContain("听歌，已 15 分");
     expect(text).toContain("pition_span action=end");
   });
 });

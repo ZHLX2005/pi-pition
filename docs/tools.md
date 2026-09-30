@@ -1,6 +1,6 @@
 # Tool 契约参考
 
-6 个 tool 的**完整参数语义**。运行时 schema 是唯一真相源（`extensions/pition.ts`），
+7 个 tool 的**完整参数语义**。运行时 schema 是唯一真相源（`extensions/pition.ts`），
 本文与之保持同步 —— 改参数时请一并更新。
 
 所有 tool **无条件注册**：未绑定库时调用会抛错并指引 `pition_boot stage=select_db`。
@@ -96,10 +96,41 @@ agent 第一次看到就知道现状，不必先 ping `stage=done`。
 | `eventName` | string | start 必填 | 事件名。`end` 时按名精确匹配；省略时**仅当只有一个进行中事件**才允许 |
 | `note` | string | — | 可选备注（start 时设定；end 时可补充） |
 | `summary` | string | — | `end` 时的总结/感受，合并进正文 |
+| `goalItemName` | string | — | `end` 可选：今日目标条目名——收尾后把 `goalDelta` 加到该条目进度（联动 pition_goal；end 不结束 goal，只做数字加法） |
+| `goalDelta` | number | — | `end` 可选：`goalItemName` 的推进量，默认 1 |
 
-**产出格式**：`[14:32-15:00 持续 28 分钟] 跑步（公园 5 公里）— 感觉很好`
+**产出格式**（秒级）：`[14:32:15-15:00:20 持续 28 分 5 秒] 跑步（公园 5 公里）— 感觉很好`
 
 **错误行为**：`end` 时若有多个进行中事件且未传 `eventName` → 报错并列出全部候选。
+联动条目不存在 → 不抛错（span 收尾优先），文案提示改用 `pition_goal action=list`。
+
+---
+
+## `pition_goal` — 每日目标（完整 CRUD + 进度控制）
+
+按天的可量化目标（锻炼计划场景）。目标 = 标题 + 条目列表（每条 name/target/unit）。
+进度每次对话自动注入全局提示词（`pition_goal` section，实际数字）；
+自动周期 goal 跨天自动归零重开（无需人工重置）；**未配置 Notion 也可用（冷设置，进度存插件内部）**。
+
+| 参数 | 类型 | 必填 | 语义 |
+| --- | --- | --- | --- |
+| `action` | `"set" \| "progress" \| "list" \| "update" \| "delete"` | ✓ | 建 / 进度 / 列 / 改（不动进度）/ 删 |
+| `title` | string | set 必填 | 目标标题（update 可改） |
+| `items` | `{name, target, unit?}[]` | set 必填 | 可量化条目（target 正数）。update 时同名条目保留进度，新条目从 0 起 |
+| `autoPeriod` | string \| null | — | 自动周期：`"daily"` 或 5 段 cron（如 `"0 6 * * 1,3,5"` 周一三五重开；只消费 日/月/星期字段）。update 传 null 清除。**首次设置即可指定** |
+| `bindField` | string \| null | — | 绑定当前库一个字段：进度摘要自动覆写展示（看板直读）。update 传 null 清除。冷设置可不传 |
+| `replace` | boolean | — | set：同日已有目标时须显式 true 才覆盖 |
+| `date` | string | — | set：归属日期 YYYY-MM-DD，缺省今天（补录历史日） |
+| `goalId` | string | — | progress/update/delete：定位哪个 goal（省略 = 今天唯一；多个时必传） |
+| `itemName` | string | progress 必填 | 推进哪条（按条目名） |
+| `delta` \| `value` \| `reset` | number / number / boolean | — | progress 三选一：加法（默认 1，可负）/ 绝对值（非负）/ 归零 |
+| `note` | string \| null | — | 备注（update 传 null 清除） |
+
+**注入格式**：`🎯 今日目标 1 个：- 「今日锻炼计划」（每天）：俯卧撑 2/4 轮 ｜ 平板支撑 0/3 组（共 29%）`；
+连续 ≥2 天零活动时附 `⚠️ 已连续 N 天未执行——询问用户是否调整`。
+
+**绑定字段摘要格式**：`俯卧撑 2/4 轮 · 平板支撑 0/3 组（29%）`，全达标加 `✅ ` 前缀。
+字段同步是可选投影：未配置 / 无 page / 写入失败都不影响 goal 本体，仅文案附注。
 
 ---
 

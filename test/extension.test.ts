@@ -30,6 +30,7 @@ function harness() {
 const EXPECTED_TOOLS = [
   "pition_boot",
   "pition_create_today",
+  "pition_goal",
   "pition_read",
   "pition_write",
   "pition_history",
@@ -83,7 +84,14 @@ describe("pitionExtension 装配（集成）", () => {
   it("每个运行态 tool 的 execute 都是 async 函数（错误经 reject 抛出而非同步崩）", () => {
     const { pi, tools } = harness();
     pitionExtension(pi as any);
-    for (const name of ["pition_write", "pition_read", "pition_span", "pition_history", "pition_create_today"]) {
+    for (const name of [
+      "pition_write",
+      "pition_read",
+      "pition_span",
+      "pition_history",
+      "pition_create_today",
+      "pition_goal",
+    ]) {
       const t = tools.find((x) => x.name === name)!;
       expect(t.execute.constructor.name, `${name} execute 不是 async`).toBe("AsyncFunction");
     }

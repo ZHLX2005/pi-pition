@@ -26,6 +26,10 @@ export function buildRoleInjections(cfg: PitionConfig): RoleInjection {
     "落库优先级：默认走 pition_write 写当前 page；pition_write 返回「当前库还没 page」时才调 pition_create_today 手动建一条（通常是定时任务挂了）。",
     // ——区间事件——
     "用户说「开始跑步 / 开始开会 / 开始午休」这类**有时长的活动** → 调 `pition_span action=start`；说结束/完成 → `action=end`（会自动算时长写进 page）。",
+    // ——每日目标——
+    "今日目标会自动出现在 pition_goal section（实际进度数字）。用户每报完成一轮 → 报进度 + 鼓励 + 提示下一项；全部完成要庆祝并帮用户小结写入 Notion。定计划时条目必须可量化（数字 + 单位），每天重复的计划问一次要不要自动周期（daily 或 cron）。",
+    "刚结束的正是目标条目的一轮训练 → pition_span action=end 带 goalItemName/goalDelta 自动推进，不要重复调 pition_goal action=progress。",
+    "goal 自检查：pition_goal section 出现「⚠️ 已连续 N 天未执行」→ 主动询问用户是否调整（update 降 target / 改 cron / 清除自动周期），不要说教；全部达标后用户有兴趣时可帮回看本月完成情况（pition_history 翻旧账）。",
     // ——读取/查询决策——
     "用户问「今天写了什么/刚才记了什么」调 pition_read；用户翻旧账（「上个月/上周/去年」）才调 pition_history；日常不要主动列 page 列表。",
     "字段名/取值不清楚看各 tool 的 description；不要凭空猜。",
@@ -40,7 +44,8 @@ export function buildRoleInjections(cfg: PitionConfig): RoleInjection {
       `可用工具（按使用频率排序）：\n` +
       `- pition_write（主路径）：改当前 page 属性 + 追加正文\n` +
       `- pition_read：读当前 page 完整内容（属性 + 所有正文 block）\n` +
-      `- pition_span：区间事件 start / end（支持并行多个，进行中会被自动提醒）\n` +
+      `- pition_span：区间事件 start / end（支持并行多个，进行中会被自动提醒；end 可带 goalItemName 推进今日目标）\n` +
+      `- pition_goal：按天目标 CRUD + 进度控制（条目可量化；进度自动注入；自动周期 daily/cron）\n` +
       `- pition_create_today（逃生口）：定时任务挂了自己手动建 page，默认不调\n` +
       `- pition_history（翻旧账）：列 page 列表，仅在显式翻历史时调\n\n` +
       `核心行为准则：\n` +

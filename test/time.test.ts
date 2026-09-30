@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   autoFillDateProperty,
   clockPrefix,
+  formatElapsed,
   formatSpanRange,
   prefixClockToContent,
   toDate,
@@ -87,16 +88,32 @@ describe("toLocalIsoString", () => {
 });
 
 describe("formatSpanRange", () => {
-  it("输出 [起-止 持续 N 分钟]", () => {
-    const start = new Date(2026, 8, 29, 14, 32);
-    const end = new Date(2026, 8, 29, 15, 0);
-    expect(formatSpanRange(start, end)).toBe("[14:32-15:00 持续 28 分钟]");
+  it("输出 [起-止 持续 ...]（秒级时钟）", () => {
+    const start = new Date(2026, 8, 29, 14, 32, 15);
+    const end = new Date(2026, 8, 29, 15, 0, 20);
+    expect(formatSpanRange(start, end)).toBe("[14:32:15-15:00:20 持续 28 分 5 秒]");
   });
 
-  it("不足 1 分钟取整为 0", () => {
+  it("不足 1 分钟显示纯秒", () => {
     const start = new Date(2026, 8, 29, 14, 0, 0);
-    const end = new Date(2026, 8, 29, 14, 0, 20);
-    expect(formatSpanRange(start, end)).toBe("[14:00-14:00 持续 0 分钟]");
+    const end = new Date(2026, 8, 29, 14, 0, 47);
+    expect(formatSpanRange(start, end)).toBe("[14:00:00-14:00:47 持续 47 秒]");
+  });
+
+  it("整分钟边界", () => {
+    const start = new Date(2026, 8, 29, 14, 0, 0);
+    const end = new Date(2026, 8, 29, 14, 3, 0);
+    expect(formatSpanRange(start, end)).toBe("[14:00:00-14:03:00 持续 3 分]");
+  });
+});
+
+describe("formatElapsed", () => {
+  it("秒 / 分秒 / 分 / 时分 各档位", () => {
+    expect(formatElapsed(47_000)).toBe("47 秒");
+    expect(formatElapsed(200_000)).toBe("3 分 20 秒");
+    expect(formatElapsed(180_000)).toBe("3 分");
+    expect(formatElapsed(3_900_000)).toBe("1 时 5 分");
+    expect(formatElapsed(3_600_000)).toBe("1 时");
   });
 });
 

@@ -42,6 +42,48 @@ export interface ActiveSpan {
   startedAt: string;
 }
 
+/** 自动周期类型（goal 首次设置即可指定）：daily 或 5 段 cron（只消费 日/月/星期字段） */
+export type GoalAutoPeriod = "daily" | string;
+
+/**
+ * goal 的单个可量化条目（进度 = progress += delta 数字加法）
+ */
+export interface GoalItem {
+  name: string;
+  target: number;
+  progress: number;
+  unit?: string;
+}
+
+/**
+ * 按天持久的目标（无自动重置/清理——按 date 天然分区，注入只渲染今天，历史沉底保留）。
+ *
+ * 自动周期（autoPeriod="daily"）的 goal 是**模板**：date 是模板创建日（或最近物化日），
+ * 新的一天首次被读取/推进时自动物化一份今日实例（进度归零，模板 date 前移）。
+ */
+export interface ActiveGoal {
+  /** 唯一 id（goal_<ts>_<rand>） */
+  goalId: string;
+  title: string;
+  /** 周期类型；v1 仅 day（字段预留扩展） */
+  period: "day";
+  /** 归属日期 YYYY-MM-DD（本地时区）；模板的 date 随物化前移 */
+  date: string;
+  items: GoalItem[];
+  /** 自动周期；缺省无（一次性当日 goal，跨天沉底） */
+  autoPeriod?: GoalAutoPeriod;
+  /**
+   * 上个执行日零活动的连续天数（物化时记录；执行过=0）。
+   * ≥2 时注入侧提示 agent「连续 N 天未执行，询问用户是否调整目标」。
+   */
+  missedDays?: number;
+  /** 绑定当前库的一个可写字段：进度变化时把完成摘要覆写进去（Notion 看板直读；可选投影） */
+  bindField?: string;
+  note?: string;
+  /** ISO 字符串（本地时区） */
+  createdAt: string;
+}
+
 /** pition 的持久化配置（pition.config.json） */
 export interface PitionConfig {
   token: string;
@@ -53,6 +95,8 @@ export interface PitionConfig {
   _assistantMode?: boolean;
   /** 进行中的 span（可并行多个） */
   _activeSpans?: ActiveSpan[];
+  /** 按天持久的目标（无自动重置，按 date 分区） */
+  _activeGoals?: ActiveGoal[];
 }
 
 /** tool execute 返回的 details 统一类型（避免 pi 的 union 推导炸类型） */
@@ -119,4 +163,41 @@ export interface SpanParams {
   eventName?: string;
   note?: string;
   summary?: string;
+  /** action=end 可选：收尾后把 goalDelta 加到今日 goal 该条目（联动 pition_goal） */
+  goalItemName?: string;
+  /** action=end 可选：推进量，默认 1 */
+  goalDelta?: number;
+}
+
+/** pition_goal 的参数 */
+export interface GoalParams {
+  action: "set" | "progress" | "list" | "update" | "delete";
+  /** action=set：目标标题 */
+  title?: string;
+  /** action=set/update：可量化条目列表（update 同名条目保留进度） */
+  items?: Array<{ name: string; target: number; unit?: string }>;
+  /**
+   * action=set/update：自动周期（首次设置即可指定）。"daily" 或 5 段 cron
+   * （如 "0 6 * * 1,3,5" = 周一三五重开；只消费 日/月/星期字段，时分忽略——goal 粒度是天）。
+   * update 传 null 清除。
+   */
+  autoPeriod?: GoalAutoPeriod | null;
+  /** action=set/update：绑定当前库的一个可写字段（进度摘要覆写展示；冷设置可不传）。update 传 null 清除 */
+  bindField?: string | null;
+  /** action=set：同日已有 goal 时须显式 true 才覆盖 */
+  replace?: boolean;
+  /** action=set：归属日期 YYYY-MM-DD，缺省今天（补录历史日用） */
+  date?: string;
+  /** action=progress/update/delete：定位哪个 goal（省略=今天唯一） */
+  goalId?: string;
+  /** action=progress/update：推进哪条（按 item.name 匹配） */
+  itemName?: string;
+  /** action=progress：数字加法推进量，默认 1（可负回退）；与 value/reset 互斥 */
+  delta?: number;
+  /** action=progress：绝对值设置（非负）；与 delta/reset 互斥 */
+  value?: number;
+  /** action=progress：归零该条目；与 delta/value 互斥 */
+  reset?: boolean;
+  /** action=set/update：备注。update 传 null 清除 */
+  note?: string | null;
 }

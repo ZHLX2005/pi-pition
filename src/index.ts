@@ -20,9 +20,24 @@
 
 export { buildBootCtx } from "./boot-ctx.ts";
 // ---- 配置 ----
-export { currentBinding, currentSpans, loadConfig, normalizeConfig, saveConfig } from "./config.ts";
+export { currentBinding, currentGoals, currentSpans, loadConfig, normalizeConfig, saveConfig } from "./config.ts";
 export { fetchFields, listDatabases } from "./databases.ts";
-
+// ---- 每日目标 ----
+export {
+  cronMatchesToday,
+  deleteGoal,
+  goalCompleted,
+  goalPercent,
+  materializeGoals,
+  newGoalId,
+  progressGoal,
+  renderGoalSummary,
+  renderGoalsStatus,
+  setGoal,
+  todayGoals,
+  todayYmd,
+  updateGoal,
+} from "./goal.ts";
 // ---- Notion IO ----
 export { fetchNotion, isNetworkError, notion, notionWith } from "./notion.ts";
 // ---- 领域逻辑 ----
@@ -42,6 +57,7 @@ export { endSpan, newSpanId, renderSpansStatus, startSpan } from "./span.ts";
 export {
   autoFillDateProperty,
   clockPrefix,
+  formatElapsed,
   formatSpanRange,
   prefixClockToContent,
   toDate,
@@ -51,17 +67,22 @@ export {
 // ---- tool 定义 ----
 export { defineBootTool } from "./tools/boot.ts";
 export { defineCreateTodayTool } from "./tools/create_today.ts";
+export { defineGoalTool } from "./tools/goal.ts";
 export { defineHistoryTool } from "./tools/history.ts";
 export { defineReadTool } from "./tools/read.ts";
 export { defineSpanTool } from "./tools/span.ts";
 export { defineWriteTool } from "./tools/write.ts";
 // ---- 类型 ----
 export type {
+  ActiveGoal,
   ActiveSpan,
   Binding,
   BootParams,
   CreateTodayParams,
   FieldMeta,
+  GoalAutoPeriod,
+  GoalItem,
+  GoalParams,
   HistoryParams,
   PitionConfig,
   PropertyEntry,
