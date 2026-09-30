@@ -2,7 +2,7 @@
 import { currentBinding } from "../config.ts";
 import { notion } from "../notion.ts";
 import { blocksToText, contentToBlocks, mergeProperties, readPageProperties } from "../properties.ts";
-import { prefixClockToContent, toDate } from "../time.ts";
+import { prefixClockToContent, toDate, toLocalIsoString } from "../time.ts";
 import { detail, type ToolResponse, type WriteParams } from "../types.ts";
 
 export async function runWrite(params: WriteParams): Promise<ToolResponse> {
@@ -71,7 +71,7 @@ export async function runWrite(params: WriteParams): Promise<ToolResponse> {
       store: binding.title,
       pageId: latest.id,
       url: latest.url,
-      timestamp: when.toISOString(),
+      timestamp: toLocalIsoString(when),
       prefixTimestamp: params.prefixTimestamp !== false,
       todaySoFar,
       todayProperties: propsSnapshot,

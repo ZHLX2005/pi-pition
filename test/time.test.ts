@@ -5,6 +5,7 @@ import {
   formatSpanRange,
   prefixClockToContent,
   toDate,
+  toLocalIsoString,
   toYmd,
 } from "../src/time.ts";
 import type { Binding } from "../src/types.ts";
@@ -56,6 +57,32 @@ describe("toYmd", () => {
   it("本地时区补零为 YYYY-MM-DD", () => {
     expect(toYmd(new Date(2026, 0, 5))).toBe("2026-01-05");
     expect(toYmd(new Date(2026, 11, 31))).toBe("2026-12-31");
+  });
+});
+
+describe("toLocalIsoString", () => {
+  it("输出 YYYY-MM-DDTHH:MM:SS.sss±HH:MM（含本地偏移）", () => {
+    const d = new Date(2026, 8, 29, 14, 32, 15, 123);
+    const out = toLocalIsoString(d);
+    // 形如 2026-09-29T14:32:15.123+08:00（或 -05:00 等）；关键是日期/时分秒与本地一致
+    expect(out).toMatch(/^2026-09-29T14:32:15\.123[+-]\d{2}:\d{2}$/);
+    // 反向解析必须等于原 Date 的绝对瞬间（这才是 ISO 字符串的本职）
+    expect(new Date(out).getTime()).toBe(d.getTime());
+  });
+
+  it("午夜、年初补零正确", () => {
+    const d = new Date(2026, 0, 1, 0, 0, 0, 0);
+    expect(toLocalIsoString(d)).toMatch(/^2026-01-01T00:00:00\.000[+-]\d{2}:\d{2}$/);
+  });
+
+  it("用 getHours / getMinutes 取的偏移字段是本地时区", () => {
+    // 新建一个具体时刻，与 [HH:MM] 前缀做对账（这是修复的初衷）：
+    // [HH:MM] 看到几时几分，timestamp 里 hour/minute 也应是几时几分。
+    const d = new Date(2026, 8, 29, 14, 32);
+    const out = toLocalIsoString(d);
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    expect(out).toContain(`T${hh}:${mm}:`);
   });
 });
 

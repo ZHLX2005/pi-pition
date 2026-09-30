@@ -5,7 +5,7 @@
 //   - **支持并行多个事件**（边养神边听歌是真实生活）——_activeSpans 是数组
 //   - **无需心跳**：累计时长由 startedAt 现算（每次 before_agent_start 重算），跨轮次自动增长
 //   - **end 需精确指定**：有多个进行中事件时必须传 eventName，否则报错列出全部
-import { formatSpanRange } from "./time.ts";
+import { formatSpanRange, toLocalIsoString } from "./time.ts";
 import type { ActiveSpan, PitionConfig } from "./types.ts";
 
 /** 生成唯一 span id（时间戳 + 随机后缀，无需 uuid 依赖） */
@@ -22,7 +22,7 @@ export function startSpan(
 ): { cfg: PitionConfig; span: ActiveSpan; totalActive: number } {
   if (!eventName) throw new Error("action=start 必须传 eventName");
   const spans = cfg._activeSpans ?? [];
-  const span: ActiveSpan = { spanId: newSpanId(now), eventName, note, startedAt: now.toISOString() };
+  const span: ActiveSpan = { spanId: newSpanId(now), eventName, note, startedAt: toLocalIsoString(now) };
   return {
     cfg: { ...cfg, _activeSpans: [...spans, span] },
     span,

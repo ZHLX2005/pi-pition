@@ -2,7 +2,7 @@
 import { currentBinding } from "../config.ts";
 import { notion } from "../notion.ts";
 import { buildProperties, contentToBlocks } from "../properties.ts";
-import { autoFillDateProperty, prefixClockToContent, toDate } from "../time.ts";
+import { autoFillDateProperty, prefixClockToContent, toDate, toLocalIsoString } from "../time.ts";
 import { type CreateTodayParams, detail, type ToolResponse } from "../types.ts";
 
 export async function runCreateToday(params: CreateTodayParams): Promise<ToolResponse> {
@@ -29,7 +29,7 @@ export async function runCreateToday(params: CreateTodayParams): Promise<ToolRes
       store: binding.title,
       pageId: page.id,
       url: page.url,
-      timestamp: when.toISOString(),
+      timestamp: toLocalIsoString(when),
       prefixContent: params.prefixContent !== false,
       escape: true,
     }),

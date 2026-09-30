@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-30
+
+### Fixed
+
+- **`pition_write` / `pition_create_today` 的 `details.timestamp` 与 `pition_span` 的 `startedAt` 跟本地 `[HH:MM]` 差 8 小时**。
+  根因是 `Date.toISOString()` 永远输出 UTC（带 `Z`），跟本地化的 `[HH:MM]` 前缀直接比对就错位（典型：北京时区晚 8h）。
+  修复：新增 `src/time.ts#toLocalIsoString(when)`，输出 `YYYY-MM-DDTHH:MM:SS.sss±HH:MM`（保留本地时区偏移）；三处 `toISOString()` 全部替换为该函数。
+
 ## [0.2.1] - 2026-09-29
 
 ### Added

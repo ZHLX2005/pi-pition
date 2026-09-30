@@ -45,6 +45,7 @@ export {
   formatSpanRange,
   prefixClockToContent,
   toDate,
+  toLocalIsoString,
   toYmd,
 } from "./time.ts";
 // ---- tool 定义 ----
