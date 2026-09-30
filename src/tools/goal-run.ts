@@ -180,9 +180,17 @@ export async function runGoal(params: GoalParams): Promise<ToolResponse> {
   const { list, materialized } = todayGoals(cfg._activeGoals ?? []);
   if (materialized !== (cfg._activeGoals ?? [])) saveConfig({ ...cfg, _activeGoals: materialized });
   if (!list.length) {
+    // 自诊断：为空时报告插件内还存着什么、今天几号——set 传错日期 / 状态被清可当场看出
+    const others = (cfg._activeGoals ?? [])
+      .slice(-3)
+      .map((g) => `「${g.title}」@${g.date}${g.autoPeriod ? `(${g.autoPeriod === "daily" ? "每天" : "cron"})` : ""}`)
+      .join("、");
+    const hint = others
+      ? `。插件内现存（按 date 分区，只渲染今天）：${others}——若有目标但日期不是 ${today}，说明 set 时 date 传错了（重 set 不带 date 即可）`
+      : "——用 action=set 建一个";
     return {
-      content: [{ type: "text", text: `今天（${today}）还没有目标——用 action=set 建一个` }],
-      details: detail({ action: "list", goals: [] }),
+      content: [{ type: "text", text: `今天（${today}）还没有目标${hint}` }],
+      details: detail({ action: "list", goals: [], today, storedGoals: (cfg._activeGoals ?? []).length }),
     };
   }
   return {

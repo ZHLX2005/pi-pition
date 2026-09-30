@@ -175,6 +175,13 @@ export function setGoal(
   const autoPeriod = checkAutoPeriod(params.autoPeriod);
   const date = params.date?.trim() || todayYmd(now);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`date 必须是 YYYY-MM-DD 格式：${date}`);
+  // 未来日期的 goal 在 list/注入里永远不可见（只渲染今天），是"set 成功却查无此 goal"的经典来源
+  // （模型在凌晨算错今天日期是高发场景）——set 时直接拒绝。
+  if (date > todayYmd(now)) {
+    throw new Error(
+      `date 不能是未来日期（${date} > 今天 ${todayYmd(now)}）。目标归属今天就不传 date；补录历史才传过去日期`,
+    );
+  }
 
   const goals = cfg._activeGoals ?? [];
   const existingIdx = autoPeriod ? -1 : goals.findIndex((g) => g.date === date && !g.autoPeriod);

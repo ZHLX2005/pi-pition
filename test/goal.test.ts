@@ -83,6 +83,14 @@ describe("setGoal", () => {
     expect(b.goal.date).toBe("2026-09-28");
   });
 
+  // 回归：未来日期的 goal 在 list/注入里永远不可见（只渲染今天）——线上实症
+  // （模型凌晨 set 时传错 date，「set 成功 1 分钟后查无此 goal」）
+  it("date 未来日期拒绝（set 时即报错，不落不可见毒丸）", () => {
+    expect(() =>
+      setGoal(baseCfg(), { title: "t", items: [{ name: "x", target: 1 }], date: "2026-10-01" }, NOW),
+    ).toThrowError(/未来日期/);
+  });
+
   it("自动周期 goal 不参与同日判重", () => {
     const a = setGoal(baseCfg(), { title: "模板", items: [{ name: "x", target: 1 }], autoPeriod: "daily" }, NOW);
     const b = setGoal(a.cfg, { title: "当日", items: [{ name: "y", target: 1 }] }, NOW);
