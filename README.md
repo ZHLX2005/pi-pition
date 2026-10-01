@@ -18,7 +18,18 @@ pi install npm:@flowot/pi-pition
 # → agent 调 pition_write，属性按类型合并（标签 union、金额累加），正文追加到当前 page
 ```
 
-配置完成后 6 个 tool 立即可用，无需重启。
+配置完成后 7 个 tool 立即可用，无需重启。
+
+### 内置 skill（场景 SOP）
+
+包自带 2 个场景 skill（pi 原生 `pi.skills` 机制分发，装包即有，随包升级自动更新）：
+
+| skill | 触发场景 |
+|---|---|
+| `pition-goal-coach` | 锻炼/健身目标：定计划、训练中推进（「开始第2轮」「结束」）、问完成度、断更调整 |
+| `pition-daily-log` | 日常记录：记一笔/打卡/吃了/花了/心情/感悟——何时记、写属性还是正文、用哪个 tool |
+
+skill 按 description 路由：只有任务匹配时模型才读取全文，不占常驻 token。显式调用：`/skill:pition-goal-coach`。
 
 ## 安装
 
@@ -55,7 +66,7 @@ cd pi-pition && npm install
 
 所有运行态 tool **无条件注册**——没绑定库时调用会得到清晰错误，指引 agent 去走 `pition_boot`。
 
-**每个 tool 的完整参数语义见 [`docs/tools.md`](docs/tools.md)。**
+**每个 tool 的完整参数语义见 [`docs/tools.md`](docs/tools.md)；场景级使用 SOP 见包内 `skills/`（`pition-goal-coach` / `pition-daily-log`）。**
 
 ### `pition_boot` 5 阶段契约
 

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-01
+
+### Added
+
+- **内置 2 个场景 skill（SOP）**，pi 原生 `pi.skills` 机制分发（装包即有、随包升级自动更新、零代码）：
+  - `pition-goal-coach`：锻炼目标场景剧本——对话式收集→可量化方案→set（不传 date）→span 联动推进→进度汇报→断更自检查
+  - `pition-daily-log`：日常记录剧本——触发判断、工具选择决策树（write/span/create_today/history）、属性看板思维、时间戳语义、写入后动作
+- skill 按 description 路由按需读取（不占常驻 token）；`/skill:pition-goal-coach` 可显式调用。
+
 ## [0.3.1] - 2026-10-01
 
 ### Fixed

@@ -1,6 +1,6 @@
 {
   "name": "@flowot/pi-pition",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Notion 个人记录助手 — 把 Notion 数据库变成 pi agent 的持久化存储（page列表透明、属性追加合并、区间事件记录、5阶段引导配置）。",
   "type": "module",
   "keywords": [
@@ -26,6 +26,7 @@
     "src/",
     "docs/",
     "extensions/",
+    "skills/",
     "index.ts",
     "pition.config.example.json",
     "README.md",
@@ -67,6 +68,9 @@
   "pi": {
     "extensions": [
       "./extensions/pition.ts"
+    ],
+    "skills": [
+      "skills"
     ]
   },
   "lintExemptions": "./LINT-EXEMPTIONS.md"

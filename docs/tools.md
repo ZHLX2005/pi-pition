@@ -3,6 +3,9 @@
 7 个 tool 的**完整参数语义**。运行时 schema 是唯一真相源（`extensions/pition.ts`），
 本文与之保持同步 —— 改参数时请一并更新。
 
+> 场景级使用 SOP（何时用哪个 tool、对话流程、常见坑）在包内 `skills/` 目录：
+> `pition-goal-coach`（锻炼目标）、`pition-daily-log`（日常记录）——与本文互为补充。
+
 所有 tool **无条件注册**：未绑定库时调用会抛错并指引 `pition_boot stage=select_db`。
 
 ---
