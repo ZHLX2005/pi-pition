@@ -399,8 +399,9 @@ export function renderGoalsStatus(goals: ActiveGoal[], now: Date = new Date()): 
   });
   return (
     `🎯 今日目标 ${todays.length} 个：\n${lines.join("\n")}\n` +
-    `   → 用户每完成一轮会告诉你；agent 及时报进度 + 鼓励 + 提示下一项。` +
-    `收尾一个 span 时可带 goalItemName/goalDelta 自动推进。\n` +
+    `   → 用户每完成一组/一轮会告诉你；agent 及时报进度 + 鼓励 + 提示下一项，` +
+    `完成即调 pition_goal action=progress 推进（做组/次数/时长型目标直接 progress）。\n` +
+    `   → 需计时的长任务（跑步/球类）才开 span；span end 可带 goalItemName/goalDelta 一次完成收尾+推进。\n` +
     `   → 全部达标后：庆祝 + 可帮用户回看本月完成情况（pition_history 翻旧账）。`
   );
 }

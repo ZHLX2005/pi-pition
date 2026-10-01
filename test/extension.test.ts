@@ -1,5 +1,8 @@
 // 集成测试：用 fake pi 跑完整工厂，验证 6 个 tool + 2 个命令 + 2 个事件订阅都注册，
 // 且 before_agent_start handler 真实可执行（能抓到 hoist/闭包类 ReferenceError）。
+import { rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import pitionExtension from "../extensions/pition.ts";
 
@@ -76,6 +79,50 @@ describe("pitionExtension 装配（集成）", () => {
     pitionExtension(pi as any);
     const event = { systemPromptOptions: { promptGuidelines: [], sections: {} } };
     await expect(handlers.before_agent_start(event)).resolves.not.toThrow();
+  });
+
+  // 端到端注入断言（FR2）：今日有 goal 时，before_agent_start 必须把进度写进
+  // systemPromptOptions.sections.pition_goal——这是「每次对话提醒」的唯一通道，静默失灵 = 功能整体失效。
+  it("今日有 goal 时，before_agent_start 注入 pition_goal section（含进度与 ⚠️ 自检查）", async () => {
+    process.env.PITION_CONFIG = join(tmpdir(), `pition-ext-${Date.now()}-${process.pid}.json`);
+    try {
+      const today = new Date();
+      const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+      writeFileSync(
+        process.env.PITION_CONFIG,
+        JSON.stringify({
+          token: "ntn_e2e",
+          bindings: {},
+          currentBindingId: null,
+          _assistantMode: true,
+          _activeGoals: [
+            {
+              goalId: "g_e2e",
+              title: "今日锻炼",
+              period: "day",
+              date: ymd,
+              items: [{ name: "俯卧撑", target: 4, progress: 2, unit: "轮" }],
+              missedDays: 3,
+              createdAt: `${ymd}T10:00:00.000+08:00`,
+            },
+          ],
+        }),
+        "utf8",
+      );
+      const { pi, handlers } = harness();
+      pitionExtension(pi as any);
+      const event = { systemPromptOptions: { promptGuidelines: [], sections: {} } };
+      await handlers.before_agent_start(event);
+      const section = (event.systemPromptOptions.sections as Record<string, string>).pition_goal ?? "";
+      expect(section).toContain("今日目标 1 个");
+      expect(section).toContain("俯卧撑 2/4 轮");
+      expect(section).toContain("已连续 3 天未执行"); // 自检查提示随注入带出
+      // 注：goal section 独立于助理模式（程序性上下文，未绑库也注入）；
+      // 助理模式 guidelines 需「已绑定库」才注入，本用例未绑库不断言。
+    } finally {
+      rmSync(process.env.PITION_CONFIG, { force: true });
+      delete process.env.PITION_CONFIG;
+    }
   });
 
   // 注：「未配置库时 tool 抛错」的行为由 currentBinding 的单元测试覆盖

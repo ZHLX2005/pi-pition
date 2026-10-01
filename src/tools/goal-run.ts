@@ -111,7 +111,7 @@ export async function runGoal(params: GoalParams): Promise<ToolResponse> {
       content: [
         {
           type: "text",
-          text: `🎯 ${verb}目标「${goal.title}」（${goal.date}）${recurNote}${syncNote}：${renderGoalSummary(goal)}\n进度会自动注入每次对话。开始训练时说「开始 xx」我会记 span；每轮结束在 span end 带 goalItemName 自动推进。`,
+          text: `🎯 ${verb}目标「${goal.title}」（${goal.date}）${recurNote}${syncNote}：${renderGoalSummary(goal)}\n进度会自动注入每次对话。每完成一组/一轮 → 我直接 progress 推进并报进度；需计时的长任务（跑步/球类）说「开始 xx」我会记 span，结束时一次完成收尾+推进。`,
         },
       ],
       details: detail({ action: "set", goal, replaced, bindFieldSync: syncNote || "ok" }),
