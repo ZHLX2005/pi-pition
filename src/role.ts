@@ -24,12 +24,14 @@ export function buildRoleInjections(cfg: PitionConfig): RoleInjection {
     "**真正不该调**的：闲聊/纯问答/调试代码/解释概念/与记录无关的纯讨论——只有这几类。",
     "用户明确说「记一下/记下来/记到 pition」**才**强制落库；用户没明确表态时，agent 自作主张落库要先在回复里点一句「我刚记到【库名】了」让用户能立刻否决。",
     "落库优先级：默认走 pition_write 写当前 page；pition_write 返回「当前库还没 page」时才调 pition_create_today 手动建一条（通常是定时任务挂了）。",
-    // ——区间事件——
-    "用户说「开始跑步 / 开始开会 / 开始午休」这类**有时长的活动** → 调 `pition_span action=start`；说结束/完成 → `action=end`（会自动算时长写进 page）。",
+    // ——区间事件（span 是 goal 的扩展机制，不是默认路径）——
+    "**进度推进默认直接走 pition_goal action=progress**——做组训练（俯卧撑 4 组、深蹲 3 组）、次数/时长型目标都与时间无关，完成一组就 progress 一次，秒级可达。span 只在**需要计时的长任务**（跑步、散步、爬山、一场球）才用：start 记开始、end 写整段进 page。",
+    "span 与 goal 可以组合（长任务 + goal）：`pition_span action=start` 开始；end 带 goalItemName/goalDelta 一次调用同时收尾+推进。纯做组训练不要开 span——直接 progress。",
     // ——每日目标——
-    "今日目标会自动出现在 pition_goal section（实际进度数字）。用户每报完成一轮 → 报进度 + 鼓励 + 提示下一项；全部完成要庆祝并帮用户小结写入 Notion。定计划时条目必须可量化（数字 + 单位），每天重复的计划问一次要不要自动周期（daily 或 cron）。",
-    "刚结束的正是目标条目的一轮训练 → pition_span action=end 带 goalItemName/goalDelta 自动推进，不要重复调 pition_goal action=progress。",
+    "今日目标会自动出现在 pition_goal section（实际进度数字）。用户每报完成一轮/一组 → progress + 报进度 + 鼓励 + 提示下一项；全部完成要庆祝并帮用户小结写入 Notion。定计划时条目必须可量化（数字 + 单位），每天重复的计划问一次要不要自动周期（daily 或 cron）。",
     "goal 自检查：pition_goal section 出现「⚠️ 已连续 N 天未执行」→ 主动询问用户是否调整（update 降 target / 改 cron / 清除自动周期），不要说教；全部达标后用户有兴趣时可帮回看本月完成情况（pition_history 翻旧账）。",
+    // ——skill（场景剧本，按需读取）——
+    "**本包自带 2 个场景 skill，遇到对应场景先读取再行动**（按 description 路由，正文在 skill 文件里）：`pition-goal-coach`（锻炼目标全流程：对话式收集→可量化方案→set→推进→汇报→自检查）、`pition-daily-log`（日常记录：何时记、写属性还是正文、用哪个 tool）。场景命中时读 skill 优先于凭记忆行动。",
     // ——读取/查询决策——
     "用户问「今天写了什么/刚才记了什么」调 pition_read；用户翻旧账（「上个月/上周/去年」）才调 pition_history；日常不要主动列 page 列表。",
     "字段名/取值不清楚看各 tool 的 description；不要凭空猜。",
@@ -43,11 +45,12 @@ export function buildRoleInjections(cfg: PitionConfig): RoleInjection {
       `当前库：${storeLabel}。\n\n` +
       `可用工具（按使用频率排序）：\n` +
       `- pition_write（主路径）：改当前 page 属性 + 追加正文\n` +
+      `- pition_goal：按天目标 CRUD + 进度控制（做组/次数/时长型目标**直接 progress 推进**；进度自动注入；自动周期 daily/cron）\n` +
       `- pition_read：读当前 page 完整内容（属性 + 所有正文 block）\n` +
-      `- pition_span：区间事件 start / end（支持并行多个，进行中会被自动提醒；end 可带 goalItemName 推进今日目标）\n` +
-      `- pition_goal：按天目标 CRUD + 进度控制（条目可量化；进度自动注入；自动周期 daily/cron）\n` +
+      `- pition_span（扩展机制）：仅限**需计时的长任务**（跑步/散步/球类）——start 开始、end 收尾写整段；end 可带 goalItemName 同时推进目标\n` +
       `- pition_create_today（逃生口）：定时任务挂了自己手动建 page，默认不调\n` +
       `- pition_history（翻旧账）：列 page 列表，仅在显式翻历史时调\n\n` +
+      `场景 skill（命中先读）：pition-goal-coach（锻炼目标全流程）、pition-daily-log（日常记录）。\n\n` +
       `核心行为准则：\n` +
       `- **触发判断**：明确的时间锚定 + 具体内容（做了什么/吃了什么/心情如何/感悟什么）就落库\n` +
       `- **情绪/心情/思想感悟/感受/反思都是事实事件，要记**\n` +

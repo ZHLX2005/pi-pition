@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-01
+
+### Changed
+
+- **进度推进契约调整：goal 优先，span 降为扩展机制**。做组/次数/时长型目标（俯卧撑 N 组、静蹲 N 秒）与时间无关 → 直接 `pition_goal action=progress`（秒级、零开销）；span 只用于**需计时的长任务**（跑步/散步/球类），end 带 goalItemName/goalDelta 一次完成收尾+推进。同步改：助理模式注入（role.ts）、pition_goal promptGuidelines、pition-goal-coach skill。
+- 助理模式注入新增 skill 使用指引：场景命中时**先读 skill 再行动**（pition-goal-coach / pition-daily-log），skill 优先于凭记忆。
+
 ## [0.4.0] - 2026-10-01
 
 ### Added

@@ -2,9 +2,9 @@
 name: pition-goal-coach
 description: >-
   锻炼/健身目标场景 SOP。用户想定运动计划（静蹲/跑步/俯卧撑/力量训练等）、设每日目标、
-  训练中实时推进进度（「开始第2轮」「结束」）、问今日完成度、目标连续没执行要调整——匹配到
+  训练中推进进度（「做完一组」「结束」）、问今日完成度、目标连续没执行要调整——匹配到
   这些输入时先读本文件再行动。覆盖：对话式收集身体情况 → 可量化方案 → pition_goal set
-  （autoPeriod/bindField）→ span 联动推进 → 进度汇报 → 自检查调整。
+  （autoPeriod/bindField）→ progress 直接推进（span 仅计时型长任务）→ 进度汇报 → 自检查调整。
 ---
 
 # 锻炼目标教练（pition goal 场景 SOP）
@@ -39,16 +39,21 @@ description: >-
      但过去日期也会让 list 找不到）
 4. 落盘后告知：进度会自动注入每次对话；开始训练时说「开始 xx」即可计时。
 
-## 3. 训练中实时推进（span 联动）
+## 3. 训练中推进（goal 优先，span 只是扩展）
 
-- 「开始 xx」→ `pition_span action=start`（eventName=动作名，可带 note 记负重/角度）
-- 「结束/做完了」→ `pition_span action=end` **带 `goalItemName` + `goalDelta`**：
-  - 例：第 2 轮俯卧撑结束 → `{action: "end", eventName: "俯卧撑", goalItemName: "俯卧撑", goalDelta: 1}`
-  - end 返回会附「推进到 3/4」——把进度和剩余数**复述给用户**
-- **每轮结束都要**：报进度（2/4 → 3/4）+ 明确鼓励 + 主动提示下一项（「还剩 1 轮，接下来平板支撑」）
-- **span end 已带 goalItemName 就不要再调 `pition_goal action=progress`**（会重复推进）
-- 全部完成（返回 completed 或注入显示 100%）：**庆祝**，然后帮用户把当日小结写入 Notion
-  （`pition_write`：练了什么、几组、感受、明日建议）
+**默认直接 progress**——做组/次数/时长型目标（俯卧撑 4 组、静蹲 120 秒、深蹲 3 组）与时间无关，
+用户报完成一组/一次 → `pition_goal action=progress`（itemName + delta 默认 1），零等待秒级推进。
+
+- **每轮推进后都要**：报进度（2/4 → 3/4）+ 明确鼓励 + 主动提示下一项（「还剩 1 轮，接下来平板支撑」）
+- 组间可以闲聊恢复，别催
+
+**span 只用于需计时的长任务**（跑步、散步、爬山、一场球——有真实起止时间、要写时长进 page 的）：
+
+- 「开始 xx」→ `pition_span action=start`（eventName=活动名，可带 note 记路线/配速）
+- 「结束」→ `action=end` **带 `goalItemName` + `goalDelta`**：一次调用同时收尾计时 + 推进目标
+  （end 返回附「推进到 3/4」——复述给用户）
+- **span end 已带 goalItemName 就不要再调 progress**（重复推进）
+- 做组训练**不要**开 span——没有时长可记，直接 progress 即可
 
 ## 4. 汇报与回顾
 
@@ -69,6 +74,7 @@ description: >-
 
 | 坑 | 正确做法 |
 | --- | --- |
+| 做组训练开了 span | 与时间无关的目标直接 progress；span 只给需计时的长任务 |
 | span end 已带 goalItemName，又调 progress | 只用 end 联动，别重复 |
 | set 时手动传 date | 不传——归属今天；补录历史才传过去日期 |
 | 伤病用户直接给标准强度 | 先确认无痛区间，方案里写红线（痛即停） |

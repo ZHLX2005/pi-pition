@@ -14,7 +14,7 @@ export function defineGoalTool() {
       "**对话式设置流程**：用户说想锻炼/定计划（「我想练腰腹」）→ 先逐项了解（身体情况/运动倾向/可用时间），确认后给一个**可量化**的方案（每条有数字 target + unit，如 俯卧撑 4 轮、平板支撑 3 组），用户认可才调 set 落盘。每天重复的计划问一次要不要自动周期（每天=daily，周一三五=cron『0 6 * * 1,3,5』）。",
       "**goal 场景的 agent 姿态**：用户每报完成一轮 → 报进度（2/4 → 3/4）+ 明确鼓励 + 主动提示下一项；全部完成要庆祝，并帮用户把当日小结写入 Notion（pition_write）。",
       "用户问完成度（「今天完成得怎么样」「还剩多少」）→ 调 action=list 读真实进度汇报，**不要凭记忆**。",
-      "进行中的今日目标自动出现在全局提示词的 pition_goal section（实际进度数字，每次对话自动更新）。用户开始一轮训练时配合 pition_span action=start，收尾时在 end 带 goalItemName/goalDelta 自动推进——不要重复调 progress。改计划用 update（同名条目保留进度），不保存的用 delete。",
+      "进行中的今日目标自动出现在全局提示词的 pition_goal section（实际进度数字，每次对话自动更新）。**进度推进默认直接调 action=progress**——做组/次数/时长型目标（俯卧撑 N 组、静蹲 N 秒）与时间无关，完成一组就 progress 一次；span（计时扩展）只用于**需计时的长任务**（跑步/散步/球类），end 带 goalItemName/goalDelta 一次完成收尾+推进。改计划用 update（同名条目保留进度），不保存的用 delete。",
       "未配置 Notion 时 goal 照常可用（冷设置：进度只存插件内部）；绑字段看板展示是可选增强，配好后重新 set/update 即可绑上。",
     ],
     parameters: Type.Object({
