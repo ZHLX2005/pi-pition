@@ -20,13 +20,13 @@ export function defineBootTool(hooks: BootHooks) {
   return {
     name: "pition_boot",
     label: "Pition 元配置（boot）",
-    description: `pition 的引导态统一入口：分阶段配置 Notion 集成。5 个阶段 — stage=token 校验并落盘 token；stage=select_db 列库让用户选一个（切空间会保留所有已描述库的字段 desc）；stage=describe_fields 列字段让用户填 description；stage=set_mode 切换助理模式；stage=done 返回当前已绑定库 + 助理模式。${hooks.bootCtx}`,
+    description: `pition 配置引导（引导态统一入口）：按 stage 推进 token → select_db（选库/切空间）→ describe_fields（补字段说明）→ set_mode（助理模式）→ done（查状态）。任意阶段可中断、可只改某一阶段；字段说明落盘后随每轮对话注入。${hooks.bootCtx}`,
+    promptSnippet: "pition 配置引导（token / 选库 / 字段说明 / 助理模式）——当前状态直接看它的 description",
     promptGuidelines: [
-      "不确定当前 pition 配置状态时，**直接看本 tool 的 description 里的「当前状态」段**——已含 token / 库 / 助理模式三件概况，不必先 ping stage=done。",
-      "用户首次使用 pition 时，按 done → token（已有 token 则跳过）→ select_db → describe_fields → set_mode → done 顺序推进。",
-      "用户只改某一阶段的产物时，直接调对应 stage（不必从 token 重走）。",
-      "切空间（换库）调 stage=select_db 重新选，**之前库的字段 desc 不会丢**，会在 settings 里自动按 dbId 保留。",
-      "boot 完成后，用户的实际写入意图应走 pition_write/pition_read/pition_history/pition_span，不要再用 pition_boot。",
+      "不确定 pition 当前配置状态时，**先看本 tool 的 description 里的「当前状态」段**（token / 库 / 助理模式）——不必先 ping stage=done。",
+      "首次配置按 done → token（已有则跳过）→ select_db → describe_fields → set_mode 顺序推进；只改某一阶段产物时直接调对应 stage，不必从 token 重走。",
+      "describe_fields 一次性提交该库所有字段的 description：字段说明会随每次对话注入（pition_fields 段），写得越具体 agent 写得越准。",
+      "配置完成后用户的写入意图走运行态 tool（pition_write / pition_goal / pition_span…），不要再用 pition_boot。",
     ],
     parameters: Type.Object({
       stage: Type.Union(

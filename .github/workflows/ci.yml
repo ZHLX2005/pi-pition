@@ -29,7 +29,12 @@ jobs:
       - name: Dead code scan (knip)
         run: npm run knip
 
-  # peer 范围 floor 验证：用 pi 仓库声称的最低版本试加载
+  # peer 范围 floor 验证：用 package.json 里声明的**最低**版本（当前 0.86.0）跑两条线：
+  #   1) smoke —— 加载 + 注册（与 pi 的具体版本无关）
+  #   2) 真宿主注入测试 + 注入诊断 —— 验证 floor 版本真的支持 sections / toolGuidelines
+  # 版本从 package.json 读，避免与 peerDependencies 两处漂移。
+  # 取证：0.85 的 BuildSystemPromptOptions 无这两个字段，0.86 起才有（且导出 ExtensionRunner /
+  # discoverAndLoadExtensions，构造函数签名一致）——所以下界必须是 0.86。
   compat-floor-pi:
     runs-on: ubuntu-latest
     steps:
@@ -39,10 +44,18 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Resolve peer floor
+        id: floor
+        run: |
+          v=$(node -p "require('./package.json').peerDependencies['@earendil-works/pi-coding-agent'].replace(/[^0-9.].*$/, '')")
+          echo "pi=$v" >> "$GITHUB_OUTPUT"
+          echo "floor pi = $v"
       - name: Install floor Pi
-        run: npm install --no-save @earendil-works/pi-coding-agent@0.80.5 @earendil-works/pi-tui@0.80.5 typebox@1.3.0
+        run: npm install --no-save @earendil-works/pi-coding-agent@${{ steps.floor.outputs.pi }} @earendil-works/pi-tui@${{ steps.floor.outputs.pi }} typebox@1.3.0
       - name: Smoke against floor Pi
         run: node scripts/smoke-load.mjs
+      - name: Injection path against floor Pi
+        run: npx vitest run --no-file-parallelism test/host-injection.test.ts
 
   # 向前 canary：装 Pi latest，看有没有 API 破坏
   compat-latest-pi:

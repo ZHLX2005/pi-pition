@@ -1,12 +1,31 @@
 # Tool 契约参考
 
-7 个 tool 的**完整参数语义**。运行时 schema 是唯一真相源（`extensions/pition.ts`），
+7 个 tool 的**完整参数语义**。运行时 schema 是唯一真相源（`src/tools/<name>.ts`），
 本文与之保持同步 —— 改参数时请一并更新。
 
 > 场景级使用 SOP（何时用哪个 tool、对话流程、常见坑）在包内 `skills/` 目录：
-> `pition-goal-coach`（锻炼目标）、`pition-daily-log`（日常记录）——与本文互为补充。
+> `pition-daily-log`（日常记录）、`pition-goal-coach`（锻炼目标）、`pition-setup`（配置与绑定）
+> ——与本文互为补充。注入用的浓缩剧本在 `src/sop.ts`（与 skill 是一对，改流程两处都要改）。
 
 所有 tool **无条件注册**：未绑定库时调用会抛错并指引 `pition_boot stage=select_db`。
+
+## 0. 注入契约（模型每轮看到什么）
+
+| 面 | 内容 | 何时 |
+| --- | --- | --- |
+| `promptSnippet`（tools 层） | 每个 tool 一行摘要，进 pi 的 Available tools 索引 | 常驻 |
+| `promptGuidelines`（rules 层） | 工具自身机理，每个 tool 1-3 条 | 常驻（按场景可裁剪） |
+| `sections.pition_core` | 库名 + 工具索引 + 硬边界 | 助理模式开 |
+| `sections.pition_scene` | **按状态装配**的剧本片段 | 场景 ≠ 闲聊 |
+| `sections.pition_fields` | **当前库字段字典**（字段名 + 类型 + append 语义 + 字段说明） | 需要写属性的场景 |
+| `sections.pition_runtime` | 现在几点 + 本会话已写入几条 + 上一轮工具失败/警告 | 助理模式开（每轮都变） |
+| `sections.pition_goal` / `pition_span` | 今日目标进度 / 进行中事件与时长 | 有数据即注入 |
+
+- 场景路由：`src/scene.ts`（setup > train > recall > log > chat，低信息量消息继承上一场景）
+- 剧本片段带条件（`SopFragment.when(state)`）：例如「还没有今日目标」才教怎么 `set`，
+  目标在跑时改为给「下一项是什么」（带真实进度）；上一轮 write 报过「没有 page」才提逃生口
+- tool 的 guideline 按场景裁剪（省常驻 token），但**工具始终可调用**——不做能力门禁
+- 常驻字节有门禁：`npm run context:check` 校验 `docs/context-budget.json`
 
 ---
 

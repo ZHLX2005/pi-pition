@@ -9,13 +9,12 @@ export function defineGoalTool() {
   return {
     name: "pition_goal",
     label: "Pition 每日目标",
-    description: `按天目标管理（完整 CRUD + 进度控制；锻炼计划等场景）：目标 = 标题 + 可量化条目列表（name/target/unit，如 俯卧撑 4 轮）。5 个 action：set=建目标（autoPeriod 可指定自动周期 daily/cron；bindField 可绑字段做看板展示；同日已有须 replace:true；date 补录）；progress=进度控制（delta 数字加法默认 1 / value 绝对值 / reset 归零，三选一）；list=列今日进度；update=改标题/条目（同名保留进度）/绑定/周期（不动进度）；delete=删除。进度每次对话自动注入全局提示词（实际数字）；自动周期 goal 跨天自动归零重开，无需人工重置。未配置 Notion 也可用（冷设置：进度存插件内部）。`,
+    description: `按天目标管理（锻炼计划等场景）：目标 = 标题 + 可量化条目列表（name/target/unit，如 俯卧撑 4 轮）。5 个 action：set（建；autoPeriod 可指定自动周期 daily/cron；bindField 可绑字段做看板；同日已有须 replace；date 补录历史）/ progress（进度：delta 加法默认 1、value 绝对值、reset 归零，三选一）/ list（列今日）/ update（改条目·绑定·周期，同名条目保留进度）/ delete。今日进度每轮自动注入（实际数字）；自动周期跨天自动归零重开，无需人工重置。未配置 Notion 也可用（冷设置：进度存插件内部）。`,
+    promptSnippet: "pition 每日目标 CRUD + 进度推进（做组训练直接 progress）",
     promptGuidelines: [
-      "**对话式设置流程**：用户说想锻炼/定计划（「我想练腰腹」）→ 先逐项了解（身体情况/运动倾向/可用时间），确认后给一个**可量化**的方案（每条有数字 target + unit，如 俯卧撑 4 轮、平板支撑 3 组），用户认可才调 set 落盘。每天重复的计划问一次要不要自动周期（每天=daily，周一三五=cron『0 6 * * 1,3,5』）。",
-      "**goal 场景的 agent 姿态**：用户每报完成一轮 → 报进度（2/4 → 3/4）+ 明确鼓励 + 主动提示下一项；全部完成要庆祝，并帮用户把当日小结写入 Notion（pition_write）。",
-      "用户问完成度（「今天完成得怎么样」「还剩多少」）→ 调 action=list 读真实进度汇报，**不要凭记忆**。",
-      "进行中的今日目标自动出现在全局提示词的 pition_goal section（实际进度数字，每次对话自动更新）。**进度推进默认直接调 action=progress**——做组/次数/时长型目标（俯卧撑 N 组、静蹲 N 秒）与时间无关，完成一组就 progress 一次；span（计时扩展）只用于**需计时的长任务**（跑步/散步/球类），end 带 goalItemName/goalDelta 一次完成收尾+推进。改计划用 update（同名条目保留进度），不保存的用 delete。",
-      "未配置 Notion 时 goal 照常可用（冷设置：进度只存插件内部）；绑字段看板展示是可选增强，配好后重新 set/update 即可绑上。",
+      "**对话式设置**：用户说想锻炼/定计划 → 先一轮问完（身体情况/倾向/可用时间），给**可量化**方案（每条有数字 target + 单位），用户认可才 action=set；**不传 date**（归属今天）。每天重复的计划问一次 autoPeriod（daily 或 cron「0 6 * * 1,3,5」）。",
+      "**推进默认直接 action=progress**：做组/次数/时长型目标与时间无关，用户报完成一组就 progress 一次（秒级）；span 只用于需计时的长任务，且 end 带 goalItemName/goalDelta 时不要再调 progress。",
+      "问完成度调 action=list 读真实进度（不凭记忆）；改计划用 update（同名条目保留进度），不想要的用 delete。",
     ],
     parameters: Type.Object({
       action: Type.Union(

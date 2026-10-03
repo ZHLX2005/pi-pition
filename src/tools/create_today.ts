@@ -7,7 +7,8 @@ export function defineCreateTodayTool() {
   return {
     name: "pition_create_today",
     label: "Pition 手动新建当前 page",
-    description: `逃生口：在当前库新建一条 page。默认不调用——page 由 Notion 定时任务每天 0 点自动创建。仅当 pition_write 报「该库还没有任何 page」警告时由 agent 显式调用。properties 必须含 title 字段的值。当前库由 pition_boot stage=select_db 选定；要看当前库字段说明先调 pition_boot stage=done。`,
+    description: `逃生口：在当前库新建一条 page（仅当 pition_write 返回「该库还没有任何 page」警告时用；page 正常由 Notion 定时任务每天 0 点建）。properties 必须以 title 类型字段开头。字段名与语义见每轮注入的 pition_fields 段。`,
+    promptSnippet: "pition 逃生口：手动新建今天的 page（仅 write 报「没有 page」时用）",
     promptGuidelines: [
       "仅当 pition_write 返回 warning「该库还没有任何 page」时调用本工具手动建条；agent 切勿主动建 page。",
     ],

@@ -1,0 +1,686 @@
+{
+  "formatVersion": 1,
+  "encoding": "utf8",
+  "sources": [
+    "src/role.ts#GLOBAL_GUIDELINES",
+    "src/tools/*.ts（promptSnippet / promptGuidelines / description / parameters）",
+    "src/sop.ts#SCENES",
+    "package.json#pi.skills + skills/*/SKILL.md"
+  ],
+  "surfaces": {
+    "globalGuidelines": {
+      "serialization": "UTF-8 bytes of LF-joined Pi prompt guideline bullets",
+      "bytes": 477,
+      "lines": 3
+    },
+    "toolGuidelines": {
+      "serialization": "sum of UTF-8 bytes of each tool's LF-joined prompt guideline bullets (worst case: no scene pruning)",
+      "bytes": 3034,
+      "lines": 16,
+      "tools": [
+        {
+          "name": "pition_boot",
+          "bytes": 667,
+          "lines": 4
+        },
+        {
+          "name": "pition_create_today",
+          "bytes": 130,
+          "lines": 1
+        },
+        {
+          "name": "pition_goal",
+          "bytes": 713,
+          "lines": 3
+        },
+        {
+          "name": "pition_read",
+          "bytes": 78,
+          "lines": 1
+        },
+        {
+          "name": "pition_write",
+          "bytes": 629,
+          "lines": 3
+        },
+        {
+          "name": "pition_history",
+          "bytes": 109,
+          "lines": 1
+        },
+        {
+          "name": "pition_span",
+          "bytes": 708,
+          "lines": 3
+        }
+      ]
+    },
+    "toolDefinitions": {
+      "serialization": "sum of UTF-8 bytes of JSON.stringify({name, description, parameters}) per tool, plus the tools-layer snippet lines",
+      "bytes": 11590,
+      "lines": 7,
+      "tools": [
+        {
+          "name": "pition_boot",
+          "bytes": 1860,
+          "descriptionBytes": 392,
+          "parametersBytes": 1468
+        },
+        {
+          "name": "pition_create_today",
+          "bytes": 1517,
+          "descriptionBytes": 277,
+          "parametersBytes": 1240
+        },
+        {
+          "name": "pition_goal",
+          "bytes": 3071,
+          "descriptionBytes": 654,
+          "parametersBytes": 2417
+        },
+        {
+          "name": "pition_read",
+          "bytes": 417,
+          "descriptionBytes": 384,
+          "parametersBytes": 33
+        },
+        {
+          "name": "pition_write",
+          "bytes": 1877,
+          "descriptionBytes": 584,
+          "parametersBytes": 1293
+        },
+        {
+          "name": "pition_history",
+          "bytes": 871,
+          "descriptionBytes": 251,
+          "parametersBytes": 620
+        },
+        {
+          "name": "pition_span",
+          "bytes": 1281,
+          "descriptionBytes": 368,
+          "parametersBytes": 913
+        }
+      ]
+    },
+    "skillsDiscovery": {
+      "serialization": "sum of UTF-8 bytes of normalized Pi skill XML (name + description + location) per registered skill",
+      "bytes": 1759,
+      "lines": 3,
+      "skills": [
+        {
+          "root": "skills/pition-daily-log",
+          "bytes": 510
+        },
+        {
+          "root": "skills/pition-goal-coach",
+          "bytes": 637
+        },
+        {
+          "root": "skills/pition-setup",
+          "bytes": 612
+        }
+      ]
+    },
+    "ownershipAlwaysOn": {
+      "serialization": "sum of globalGuidelines, toolGuidelines, toolDefinitions and skillsDiscovery (worst case: no scene pruning)",
+      "bytes": 16860,
+      "lines": 0
+    },
+    "sceneInjections": {
+      "serialization": "UTF-8 bytes of each scene's injected sections (custom layer, only when the scene matches)",
+      "scenes": [
+        {
+          "id": "setup@unconfigured",
+          "bytes": 2126,
+          "sopBytes": 2126,
+          "fragments": [
+            "no-token",
+            "pick-db",
+            "flow",
+            "no-write-config"
+          ],
+          "sections": [
+            {
+              "name": "pition_core",
+              "bytes": 1140
+            },
+            {
+              "name": "pition_scene",
+              "bytes": 759
+            },
+            {
+              "name": "pition_runtime",
+              "bytes": 227
+            }
+          ]
+        },
+        {
+          "id": "train@unconfigured",
+          "bytes": 2358,
+          "sopBytes": 2358,
+          "fragments": [
+            "plan-new",
+            "plan-injury",
+            "progress-not-span",
+            "long-task",
+            "report"
+          ],
+          "sections": [
+            {
+              "name": "pition_core",
+              "bytes": 1140
+            },
+            {
+              "name": "pition_scene",
+              "bytes": 991
+            },
+            {
+              "name": "pition_runtime",
+              "bytes": 227
+            }
+          ]
+        },
+        {
+          "id": "log@unconfigured",
+          "bytes": 2680,
+          "sopBytes": 2680,
+          "fragments": [
+            "what",
+            "where",
+            "span-for-events",
+            "no-page-recovery",
+            "timestamp",
+            "avoid-duplicate",
+            "recap"
+          ],
+          "sections": [
+            {
+              "name": "pition_core",
+              "bytes": 1140
+            },
+            {
+              "name": "pition_scene",
+              "bytes": 1313
+            },
+            {
+              "name": "pition_runtime",
+              "bytes": 227
+            }
+          ]
+        },
+        {
+          "id": "recall@unconfigured",
+          "bytes": 1823,
+          "sopBytes": 1823,
+          "fragments": [
+            "read-today",
+            "history-range",
+            "report-order"
+          ],
+          "sections": [
+            {
+              "name": "pition_core",
+              "bytes": 1140
+            },
+            {
+              "name": "pition_scene",
+              "bytes": 456
+            },
+            {
+              "name": "pition_runtime",
+              "bytes": 227
+            }
+          ]
+        },
+        {
+          "id": "chat@unconfigured",
+          "bytes": 1367,
+          "sopBytes": 1367,
+          "fragments": [],
+          "sections": [
+            {
+              "name": "pition_core",
+              "bytes": 1140
+            },
+            {
+              "name": "pition_runtime",
+              "bytes": 227
+            }
+          ]
+        },
+        {
+          "id": "setup@ready",
+          "bytes": 3524,
+          "sopBytes": 1832,
+          "fragments": [
+            "ready",
+            "flow",
+            "no-write-config"
+          ],
+          "sections": [
+            {
+              "name": "pition_core",
+              "bytes": 1056
+            },
+            {
+              "name": "pition_scene",
+              "bytes": 549
+            },
+            {
+              "name": "pition_fields",
+              "bytes": 1692
+            },
+            {
+              "name": "pition_runtime",
+              "bytes": 227
+            }
+          ]
+        },
+        {
+          "id": "train@ready",
+          "bytes": 3966,
+          "sopBytes": 2274,
+          "fragments": [
+            "plan-new",
+            "plan-injury",
+            "progress-not-span",
+            "long-task",
+            "report"
+          ],
+          "sections": [
+            {
+              "name": "pition_core",
+              "bytes": 1056
+            },
+            {
+              "name": "pition_scene",
+              "bytes": 991
+            },
+            {
+              "name": "pition_fields",
+              "bytes": 1692
+            },
+            {
+              "name": "pition_runtime",
+              "bytes": 227
+            }
+          ]
+        },
+        {
+          "id": "log@ready",
+          "bytes": 4288,
+          "sopBytes": 2596,
+          "fragments": [
+            "what",
+            "where",
+            "span-for-events",
+            "no-page-recovery",
+            "timestamp",
+            "avoid-duplicate",
+            "recap"
+          ],
+          "sections": [
+            {
+              "name": "pition_core",
+              "bytes": 1056
+            },
+            {
+              "name": "pition_scene",
+              "bytes": 1313
+            },
+            {
+              "name": "pition_fields",
+              "bytes": 1692
+            },
+            {
+              "name": "pition_runtime",
+              "bytes": 227
+            }
+          ]
+        },
+        {
+          "id": "recall@ready",
+          "bytes": 3431,
+          "sopBytes": 1739,
+          "fragments": [
+            "read-today",
+            "history-range",
+            "report-order"
+          ],
+          "sections": [
+            {
+              "name": "pition_core",
+              "bytes": 1056
+            },
+            {
+              "name": "pition_scene",
+              "bytes": 456
+            },
+            {
+              "name": "pition_fields",
+              "bytes": 1692
+            },
+            {
+              "name": "pition_runtime",
+              "bytes": 227
+            }
+          ]
+        },
+        {
+          "id": "chat@ready",
+          "bytes": 1283,
+          "sopBytes": 1283,
+          "fragments": [],
+          "sections": [
+            {
+              "name": "pition_core",
+              "bytes": 1056
+            },
+            {
+              "name": "pition_runtime",
+              "bytes": 227
+            }
+          ]
+        },
+        {
+          "id": "setup@ready+goal",
+          "bytes": 3524,
+          "sopBytes": 1832,
+          "fragments": [
+            "ready",
+            "flow",
+            "no-write-config"
+          ],
+          "sections": [
+            {
+              "name": "pition_core",
+              "bytes": 1056
+            },
+            {
+              "name": "pition_scene",
+              "bytes": 549
+            },
+            {
+              "name": "pition_fields",
+              "bytes": 1692
+            },
+            {
+              "name": "pition_runtime",
+              "bytes": 227
+            }
+          ]
+        },
+        {
+          "id": "train@ready+goal",
+          "bytes": 3983,
+          "sopBytes": 2291,
+          "fragments": [
+            "goal-running",
+            "self-check",
+            "progress-not-span",
+            "long-task",
+            "report"
+          ],
+          "sections": [
+            {
+              "name": "pition_core",
+              "bytes": 1056
+            },
+            {
+              "name": "pition_scene",
+              "bytes": 1008
+            },
+            {
+              "name": "pition_fields",
+              "bytes": 1692
+            },
+            {
+              "name": "pition_runtime",
+              "bytes": 227
+            }
+          ]
+        },
+        {
+          "id": "log@ready+goal",
+          "bytes": 4288,
+          "sopBytes": 2596,
+          "fragments": [
+            "what",
+            "where",
+            "span-for-events",
+            "no-page-recovery",
+            "timestamp",
+            "avoid-duplicate",
+            "recap"
+          ],
+          "sections": [
+            {
+              "name": "pition_core",
+              "bytes": 1056
+            },
+            {
+              "name": "pition_scene",
+              "bytes": 1313
+            },
+            {
+              "name": "pition_fields",
+              "bytes": 1692
+            },
+            {
+              "name": "pition_runtime",
+              "bytes": 227
+            }
+          ]
+        },
+        {
+          "id": "recall@ready+goal",
+          "bytes": 3545,
+          "sopBytes": 1853,
+          "fragments": [
+            "read-today",
+            "history-range",
+            "goal-progress",
+            "report-order"
+          ],
+          "sections": [
+            {
+              "name": "pition_core",
+              "bytes": 1056
+            },
+            {
+              "name": "pition_scene",
+              "bytes": 570
+            },
+            {
+              "name": "pition_fields",
+              "bytes": 1692
+            },
+            {
+              "name": "pition_runtime",
+              "bytes": 227
+            }
+          ]
+        },
+        {
+          "id": "chat@ready+goal",
+          "bytes": 1283,
+          "sopBytes": 1283,
+          "fragments": [],
+          "sections": [
+            {
+              "name": "pition_core",
+              "bytes": 1056
+            },
+            {
+              "name": "pition_runtime",
+              "bytes": 227
+            }
+          ]
+        }
+      ],
+      "toolGuidelines": [
+        {
+          "id": "setup@unconfigured",
+          "keptTools": [
+            "pition_boot",
+            "pition_read"
+          ],
+          "bytes": 745
+        },
+        {
+          "id": "train@unconfigured",
+          "keptTools": [
+            "pition_goal",
+            "pition_span",
+            "pition_write",
+            "pition_read"
+          ],
+          "bytes": 2128
+        },
+        {
+          "id": "log@unconfigured",
+          "keptTools": [
+            "pition_write",
+            "pition_span",
+            "pition_goal",
+            "pition_create_today",
+            "pition_read"
+          ],
+          "bytes": 2258
+        },
+        {
+          "id": "recall@unconfigured",
+          "keptTools": [
+            "pition_history",
+            "pition_read",
+            "pition_goal"
+          ],
+          "bytes": 900
+        },
+        {
+          "id": "chat@unconfigured",
+          "keptTools": [
+            "pition_boot",
+            "pition_create_today",
+            "pition_goal",
+            "pition_read",
+            "pition_write",
+            "pition_history",
+            "pition_span"
+          ],
+          "bytes": 3034
+        },
+        {
+          "id": "setup@ready",
+          "keptTools": [
+            "pition_boot",
+            "pition_read"
+          ],
+          "bytes": 745
+        },
+        {
+          "id": "train@ready",
+          "keptTools": [
+            "pition_goal",
+            "pition_span",
+            "pition_write",
+            "pition_read"
+          ],
+          "bytes": 2128
+        },
+        {
+          "id": "log@ready",
+          "keptTools": [
+            "pition_write",
+            "pition_span",
+            "pition_goal",
+            "pition_create_today",
+            "pition_read"
+          ],
+          "bytes": 2258
+        },
+        {
+          "id": "recall@ready",
+          "keptTools": [
+            "pition_history",
+            "pition_read",
+            "pition_goal"
+          ],
+          "bytes": 900
+        },
+        {
+          "id": "chat@ready",
+          "keptTools": [
+            "pition_boot",
+            "pition_create_today",
+            "pition_goal",
+            "pition_read",
+            "pition_write",
+            "pition_history",
+            "pition_span"
+          ],
+          "bytes": 3034
+        },
+        {
+          "id": "setup@ready+goal",
+          "keptTools": [
+            "pition_boot",
+            "pition_read"
+          ],
+          "bytes": 745
+        },
+        {
+          "id": "train@ready+goal",
+          "keptTools": [
+            "pition_goal",
+            "pition_span",
+            "pition_write",
+            "pition_read"
+          ],
+          "bytes": 2128
+        },
+        {
+          "id": "log@ready+goal",
+          "keptTools": [
+            "pition_write",
+            "pition_span",
+            "pition_goal",
+            "pition_create_today",
+            "pition_read"
+          ],
+          "bytes": 2258
+        },
+        {
+          "id": "recall@ready+goal",
+          "keptTools": [
+            "pition_history",
+            "pition_read",
+            "pition_goal"
+          ],
+          "bytes": 900
+        },
+        {
+          "id": "chat@ready+goal",
+          "keptTools": [
+            "pition_boot",
+            "pition_create_today",
+            "pition_goal",
+            "pition_read",
+            "pition_write",
+            "pition_history",
+            "pition_span"
+          ],
+          "bytes": 3034
+        }
+      ]
+    }
+  },
+  "ceilings": {
+    "ownershipAlwaysOnBytes": 18000,
+    "sceneSopBytes": 3000,
+    "fieldDictBytes": 3600,
+    "runtimeBytes": 520
+  }
+}

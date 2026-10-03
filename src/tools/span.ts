@@ -6,13 +6,12 @@ export function defineSpanTool() {
   return {
     name: "pition_span",
     label: "Pition 区间事件",
-    description: `区间事件管理（类似计时器，支持并行多个）：记录「开始-持续-结束」的事件（开会 / 跑步 / 午休 / 写代码 / 等）。2 个 action：start=开始一段新事件（仅落 cfg，不入 Notion；可同时进行多件事）；end=收尾——把整段 [HH:MM-HH:MM 持续 N 分钟] 事件名 + 备注 拼成一条正文写入当前 page（eventName 精确匹配；省略时若只有一个进行中的 span 则收尾它，多个时报错列出全部）。累计时长由全局提示词的 pition_span section 自动现算注入，无需手动续约。`,
+    description: `区间事件（计时器，支持并行多个）：start=开始一段事件（仅落 cfg，不入 Notion）；end=收尾——把整段 [HH:MM-HH:MM 持续 N 秒] 事件名 + 备注/感受拼成一条正文写进当前 page（eventName 精确匹配；只有唯一进行中事件时才可省略）。进行中事件与实时时长由 pition_span section 自动注入。`,
+    promptSnippet: "pition 计时事件：start 开始 / end 收尾（整段写进 page，可联动 goal 进度）",
     promptGuidelines: [
-      "用户开始/进入一个有时长的事件（「开始跑步」「开始午休」「开始开会」）→ 调 pition_span action=start（带事件名 + 可选备注）。用户开始新事件时**不要**要求先结束旧事件——事件可并行。",
-      "进行中的事件（可能多件）会自动出现在全局提示词的 pition_span section（实际时长数字，每次对话自动更新），不需要也不存在 heartbeat 调用。",
-      "用户说结束 / 完成 / 出来了 / 感受 → 调 pition_span action=end（带 eventName 精确收尾那件事；事件名 / 备注 / 感受会被合并进正文写入当前 page）。",
-      "今日有目标（全局提示词的 pition_goal section 非空）且刚结束的正是目标条目的一轮训练 → end 带上 goalItemName + goalDelta 自动推进进度（如第 2 轮结束：goalItemName=俯卧撑, goalDelta=1）——不要再单独调 pition_goal action=progress。",
-      "**不要**用 pition_write 写『开始跑步』或『结束跑步』这类有开始+结束的事件——用 pition_span 记录整段。",
+      "**只在需计时的长任务**（跑步/散步/爬山/球类/开会/午休）用 span：用户说「开始 xx」→ action=start（带事件名 + 可选备注）；说「结束/做完了」→ action=end 收尾。做组训练（俯卧撑 N 组）与时间无关，直接 pition_goal action=progress。",
+      "start 时不要要求先结束旧事件——**span 可并行**；进行中的事件由 pition_span section 自动注入实际时长（无需任何续约调用）。",
+      "刚结束的正是今日目标条目 → end 带 goalItemName + goalDelta 一次完成收尾 + 推进；带了就不要再调 pition_goal action=progress（重复推进）。不要用 pition_write 写「开始跑步」这类事件。",
     ],
     parameters: Type.Object({
       action: Type.Union([Type.Literal("start"), Type.Literal("end")], {

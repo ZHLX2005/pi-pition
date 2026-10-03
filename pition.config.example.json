@@ -1,6 +1,20 @@
 {
   "token": "",
-  "bindings": {},
-  "currentBindingId": null,
-  "_assistantMode": false
+  "bindings": {
+    "把你的库 id 填这里": {
+      "dbId": "把你的库 id 填这里",
+      "title": "个人日常记录",
+      "description": "个人日常记录总表",
+      "fields": {
+        "Name": { "type": "title", "description": "记录标题，一般是当天日期" },
+        "基础": { "type": "rich_text", "description": "当日核心事项摘要" },
+        "标签": { "type": "multi_select", "description": "事项类别标签（运动/饮食/工作/学习/社交）" },
+        "金额": { "type": "number", "description": "当日花销合计（元）" }
+      }
+    }
+  },
+  "currentBindingId": "把你的库 id 填这里",
+  "_assistantMode": false,
+  "_activeSpans": [],
+  "_activeGoals": []
 }

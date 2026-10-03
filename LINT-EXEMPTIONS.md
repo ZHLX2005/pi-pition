@@ -17,8 +17,9 @@ pi API 签名、或用户配置 JSON 的文件：
 - pi API / 对话上下文：`src/wizard.ts`、`src/role-mode.ts`、`extensions/pition.ts`
 - tool 层：`src/tools/*.ts`（对响应字段取值）
 
-**业务层零 `any`**（当前为 `src/types.ts` / `src/span.ts` / `src/time.ts` / `src/role.ts` /
-`src/boot-ctx.ts`，全部走 `src/types.ts` 里收窄后的领域类型）。**新增文件时保持这个边界**：
+**业务层零 `any`**（当前为 `src/types.ts` / `src/span.ts` / `src/time.ts` / `src/goal.ts` /
+`src/role.ts` / `src/scene.ts` / `src/sop.ts` / `src/fields.ts` / `src/context-budget.ts` / `src/boot-ctx.ts`，
+全部走 `src/types.ts` 里收窄后的领域类型）。**新增文件时保持这个边界**：
 新文件若需触碰外部数据，先想想是否属于上述某一层；不属于就别用 `any`。
 
 ## `noNonNullAssertion: "off"`（仅 `test/**`）
