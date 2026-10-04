@@ -21,7 +21,12 @@ pition 是它的第一个（也是当前唯一的）消费者：`src/role.ts` / 
 | 装配失败降级成最小 core | 这一轮在模型眼里变成「扩展不存在」 |
 | tool 结果回流到下一轮 | 模型忽略 WARNING，原样重试 |
 
-## 三步造一个新扩展
+## 造一个新扩展
+
+> **有 pition 仓库在手就别手抄**：`node <pition>/scripts/new-extension.mjs <目录> --name <名字>`
+> 一条命令把本目录逐字节复制过去，并生成能跑的骨架（含 `package.json` / `tsconfig.json` /
+> `src/state.ts` / `src/scenes.ts` / `src/spec.ts` / 最小自检），连 pi 版本下界都从 `version.ts` 读。
+> 下面三步是它生成的东西的原理，手工接管时照做。
 
 ### 1. 复制内核
 

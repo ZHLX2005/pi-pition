@@ -1,6 +1,6 @@
 ---
 name: pition-dev
-description: pition 项目（Notion 个人记录助手，pi coding agent 扩展）的开发与排障指南；也是**用 pition 的注入内核 src/injection/ 造别的 pi 扩展**的入口（整目录可复制复用，教程 src/injection/README.md，骨架 test/injection.test.ts）。当在本项目新增/修改 tool、调整注入面（模型看到什么）、改场景 SOP 片段、调配置格式、改字段说明、排查扩展不加载或工具不出现、安装部署、跑验证，或要复用/改动注入内核时使用。含 pi 加载链路（本项目实证）、注入分层与状态驱动片段、注入预算门禁、排查阶梯、高频坑与验证工作流。
+description: pition 项目（Notion 个人记录助手，pi coding agent 扩展）的开发与排障指南；也是**用 pition 的注入内核 src/injection/ 造别的 pi 扩展**的入口（整目录可复制复用；`scripts/new-extension.mjs` 一条命令生成骨架，教程 src/injection/README.md，可照抄例子 test/injection.test.ts）。当在本项目新增/修改 tool、调整注入面（模型看到什么）、改场景 SOP 片段、调配置格式、改字段说明、排查扩展不加载或工具不出现、安装部署、跑验证，或要复用/改动注入内核、用脚手架造新扩展时使用。含 pi 加载链路（本项目实证）、注入分层与状态驱动片段、注入预算门禁、排查阶梯、高频坑与验证工作流。
 ---
 
 # pition 开发指南
@@ -8,7 +8,7 @@ description: pition 项目（Notion 个人记录助手，pi coding agent 扩展�
 pition 把 Notion 数据库变成 pi agent 的持久化存储：agent 通过 7 个 tool 识别对话中的记录内容并自动写入。
 自包含成包，通过 `~/.pi/agent/settings.json` 的 `packages` 声明或 `scripts/install.mjs` 物化两种方式安装。
 
-> **数据快照：v0.6.0**（分层注入 + 注入预算门禁 + 注入内核可复用）。行号一律不写——实现已按职责拆到 `src/`，
+> **数据快照：v0.7.0**（分层注入 + 注入预算门禁 + 注入内核可复用 + 一条命令造新扩展）。行号一律不写——实现已按职责拆到 `src/`，
 > 定位用**文件 + 函数名**。改注入面前必读 [[C01-上下文多层结构]]。
 
 ## Tool 一览（7 个）
@@ -71,6 +71,8 @@ pition/
 ├── scripts/
 │   ├── smoke-load.mjs             jiti 冒烟（fake pi 数注册的 tool + 命令 + boot 契约）
 │   ├── check-context-budget.mjs   注入预算台账生成/校验（--check）
+│   ├── new-extension.mjs          **一条命令造新扩展**：复制 src/injection/ + 生成骨架
+│   │                             （+ new-extension.d.mts 给测试一个类型边界；导出 generate()/main()）
 │   ├── install.mjs                物化到 <agent-dir>/extensions/（一般 npm 用户不需要）
 │   └── dev/                       真宿主与诊断工具
 │       ├── host-harness.mjs       真 pi loader + ExtensionRunner 装配（+ .d.mts 类型声明）
@@ -191,6 +193,9 @@ pi 启动
 | 把实现从 `role.ts` 搬到 `src/injection/` 却**没同步文档里的 `文件#函数` 引用** | 文档里的 `role.ts#supportsStructuredInjection` 变成假引用（grep 才发现）；下一个人按文档去找，找不到 | **搬实现 = 搬引用**：`git grep -n "role\.ts#\|role-mode\.ts#"` 全量扫一遍 SKILL.md + references/；`package.json#sources` 之类的锚点同理 |
 | barrel 里 `export *` 摊平内核 | 与 pition 的同义导出（`partOfDay` / `applyOutcome` / `pruneToolGuidelines`）撞名，TS 直接报错 | 用 `export * as injection from "./injection/index.ts"` 命名空间导出 |
 | 往 `src/injection/` 里 import 领域模块 | 「整目录复制到别的扩展」悄悄失效，而且没人会立刻发现 | 内核零外部依赖 + `test/injection.test.ts` 的守卫断言（扫 import，非同目录即红） |
+| 在生成的 **JSON** 模板里写 `//` 注释 | 脚手架跑得挺欢，用户 `npm install` 才炸（`Expected double-quoted property name in JSON`）；生成阶段不校验就等于把这个坑转嫁给用户 | 理由写进模板上方的 JS 注释 / 生成出的 README，别写进 JSON；`test/new-extension.test.ts` 用 `JSON.parse` 兜底 |
+| 脚手架在模块顶层无条件 `main()` | 被测试 import 时就读了 vitest 的 argv，还 `process.exit` 把测试进程一起关掉 | 导出 `generate()` / `main(argv, io)`，只在 `resolve(process.argv[1]) === 本文件` 时才跑 CLI |
+| Windows 上把生成清单 `slice(root.length+1)` 直接断言 | 拿到 `extensions\snip.ts`，`toContain("extensions/snip.ts")` 失败 | 清单统一 `.replaceAll("\\", "/")` |
 
 ## 排查阶梯（工具不出现时，从快到慢）
 
@@ -207,10 +212,30 @@ pi 启动
 
 ## 用 pition 的注入内核造别的扩展
 
-`src/injection/` 不依赖任何 pition 领域概念，**整目录复制即可复用**。完整教程在
-`src/injection/README.md`（三步 + 最小骨架 + 换领域时最容易犯的错）；可照抄的现成例子是
-`test/injection.test.ts` 的「最小扩展（snip）」一节。真宿主验证工具
+`src/injection/` 不依赖任何 pition 领域概念，**整目录复制即可复用**。
+
+**一条命令起步**（推荐）：
+
+```sh
+node scripts/new-extension.mjs ~/code/my-ext --name my-ext [--prefix my_] [--force]
+cd ~/code/my-ext && npm install && npm test      # 生成的 4 条自检应先全绿
+```
+
+它把 `src/injection/` **逐字节复制**过去，并生成 `package.json` / `tsconfig.json` / `index.ts` /
+`extensions/<name>.ts` / `src/state.ts` / `src/scenes.ts` / `src/spec.ts` / `test/injection.test.ts` /
+`README.md`。pi 版本下界从内核 `version.ts` 的 `MIN_PI_FOR_STRUCTURED` 读，**不在脚手架里再写死一份**
+（手抄错成旧版本 = 装上后静默零注入，最难查）。
+
+脚手架自身由 `test/new-extension.test.ts`（9 例）兜底：内核复制逐字节一致、占位符全替换、
+下界等于 `MIN_PI_FOR_STRUCTURED`、目录已存在拒写。它**直接 import `generate()`/`main()` 而不是
+spawn 子进程**——本机沙箱里 `spawnSync node` 会 EBUSY，且断言的是真实产物。
+
+手工接管时：完整教程在 `src/injection/README.md`（三步 + 最小骨架 + 换领域时最容易犯的错）；
+可照抄的现成例子是 `test/injection.test.ts` 的「最小扩展（snip）」一节。真宿主验证工具
 `scripts/dev/host-harness.mjs` 已参数化（`root` / `configEnv` / `configFile` / `expectedTools`）。
+
+生成物里 `@types/node` 与 `tsconfig.json` 都不是装饰：内核 `bytes.ts` 用了 `Buffer`（缺它 vitest
+照样绿、只有 tsc 报 TS2580）；没有 tsconfig 时 `tsc --noEmit` 直接 TS18003。
 
 ## References
 

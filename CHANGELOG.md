@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-04
+
+### Added
+
+- **`scripts/new-extension.mjs`：一条命令造一个新 pi 扩展**。上一版把注入内核抽出来了，
+  但造新扩展仍要手抄骨架、手填 8 个插槽、手配 pi 版本下界——抄漏一处就是静默故障
+  （最典型的：peer 写成旧版本 → 装上后**零注入且不报错**，pi 的错误边界会把异常吃掉）。
+  现在是一条命令：
+
+  ```sh
+  node scripts/new-extension.mjs ~/code/my-ext --name my-ext [--prefix my_] [--force]
+  cd ~/code/my-ext && npm install && npm test
+  ```
+
+  - `src/injection/` **整目录逐字节复制**（生成物与仓库里的是同一份，有测试断言）
+  - 生成 `package.json` / `tsconfig.json` / `index.ts` / `extensions/<name>.ts` /
+    `src/state.ts` / `src/scenes.ts` / `src/spec.ts` / `test/injection.test.ts` / `README.md`
+  - pi 下界从内核 `version.ts` 的 `MIN_PI_FOR_STRUCTURED` 读，**不在脚手架里再写死一份**
+  - 生成的骨架带 4 条自检（分层注入 / 片段随状态变 / 结果回流 / 旧宿主跳过+只提示一次），
+    实测 `npm test` 4 passed、`tsc --noEmit` 0 error
+  - `devDependencies` 自带 `@types/node`：内核 `bytes.ts` 用了 `Buffer`，缺它 **vitest 照样绿、
+    只有 tsc 报 TS2580**——最容易被漏掉的一种坏法；`tsconfig.json` 也一并生成
+    （没有它 `tsc --noEmit` 直接 TS18003）
+- `test/new-extension.test.ts`（9 例）：内核复制逐字节一致 / 生成文件齐全且非空 /
+  `package.json` 合法且下界等于 `MIN_PI_FOR_STRUCTURED` / 无残留 `{{TOKEN}}` 占位符 /
+  `--prefix` 生效 / 目录已存在拒写（`--force` 才写）/ 非法扩展名拒绝 / CLI 退出码与用法输出。
+  直接 import 而非 spawn 子进程——断言的是真实产物。
+
+### Changed
+
+- `scripts/new-extension.mjs` 的 `generate()` / `main()` 改为导出函数，只有被 `node` 直接执行
+  时才跑 CLI（被测试 import 时不读 `process.argv`、不 `process.exit`）。
+  配 `scripts/new-extension.d.mts` 给 TS 侧一个稳定的边界契约（改字段名会编译失败，
+  而不是运行期 `undefined`）——与 `scripts/dev/host-harness.d.mts` 同一套路。
+
 ## [0.6.0] - 2026-10-03
 
 > **0.5.0 从未发布**（那一轮的工作一直留在工作区未提交、未打 tag），它的全部内容包含在 0.6.0 里；

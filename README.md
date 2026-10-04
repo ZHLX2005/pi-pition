@@ -222,7 +222,21 @@ node scripts/dev/diag-session.mjs   # SDK 会话装配诊断（需先 npm instal
 ## 复用：用 pition 的注入内核造你自己的扩展
 
 `src/injection/` 是**与 pition 领域无关**的注入机械（宿主探测、分层装配、状态驱动片段、
-场景路由、tool 结果回流、足迹裁剪、字节度量、一轮编排），**整个目录复制即可复用**：
+场景路由、tool 结果回流、足迹裁剪、字节度量、一轮编排），**整个目录复制即可复用**。
+
+### 一条命令起步（推荐）
+
+```sh
+node <pition>/scripts/new-extension.mjs ~/code/my-ext --name my-ext
+cd ~/code/my-ext && npm install && npm test   # 生成的 4 条自检应先全绿
+```
+
+它把 `src/injection/` **逐字节复制**过去，并生成一份能跑的骨架（`package.json` / `tsconfig.json` /
+`index.ts` / `extensions/<name>.ts` / `src/state.ts` / `src/scenes.ts` / `src/spec.ts` /
+`test/injection.test.ts` / `README.md`）——连 pi 版本下界都从内核的 `version.ts` 读，
+不会手抄错成旧版本（那是最难查的故障：装上后**零注入且不报错**）。
+
+想手工接管也一样：
 
 ```sh
 cp -r <pition>/src/injection  <你的扩展>/src/injection

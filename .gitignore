@@ -6,6 +6,7 @@ dist/
 # Scratch tools (本地工具产物，不入库)
 .tool/
 .claude/
+.workbuddy/
 
 # Local secrets / config (token-bearing) — 用 /pition 向导配置
 pition.config.json

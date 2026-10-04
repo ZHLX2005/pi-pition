@@ -62,8 +62,11 @@ extensions/
 skills/              3 个场景 SOP（pi 原生分发）：daily-log / goal-coach / setup
 docs/                契约层文档：tools.md（参数语义）、goal-requirements.md、context-budget.json（注入预算台账）
 test/                vitest 单元 + 集成测试（`host-injection.test.ts` 走真实 pi 宿主，
-                     `injection.test.ts` 是内核自测 + 最小扩展骨架）
-scripts/             smoke-load.mjs（jiti 冒烟）、check-context-budget.mjs（预算门禁）
+                     `injection.test.ts` 是内核自测 + 最小扩展骨架，
+                     `new-extension.test.ts` 是脚手架自检）
+scripts/             smoke-load.mjs（jiti 冒烟）、check-context-budget.mjs（预算门禁）、
+                     new-extension.mjs（一条命令造新扩展：复制内核 + 生成骨架，
+                     配 new-extension.d.mts 给测试一个类型边界）
   dev/               host-harness.mjs（真宿主装配）、diag-injection.mjs（模型看到什么）、
                      diag-session / diag-loader / diag-command / wizard-check / e2e-agent（本机诊断）
 ```

@@ -55,9 +55,18 @@ pition 侧只填插槽，机械部分不要在本项目的领域模块里重实�
 
 ## 用这套内核造别的扩展
 
-`src/injection/` 不依赖任何 pition 领域概念，**整目录复制即可复用**。完整教程在
-`src/injection/README.md`（含最小可运行骨架 + 换领域时最容易犯的错）；
+`src/injection/` 不依赖任何 pition 领域概念，**整目录复制即可复用**。
+
+一条命令起步（生成物自带自检，且 pi 版本下界从内核 `version.ts` 读，不会抄错）：
+
+```sh
+node scripts/new-extension.mjs ~/code/my-ext --name my-ext
+```
+
+完整教程在 `src/injection/README.md`（含最小可运行骨架 + 换领域时最容易犯的错）；
 可照抄的现成例子是 `test/injection.test.ts` 里的「最小扩展（snip）」一节（16 条断言，全绿）。
+脚手架本身有 `test/new-extension.test.ts` 兜底：内核复制是否逐字节一致、占位符是否全被替换、
+下界是否等于 `MIN_PI_FOR_STRUCTURED`、目标目录已存在是否会拒写。
 
 改动纪律：内核是**跨扩展共享**的，往里加东西前先问「这是机械还是领域」——
 领域内容一律留在消费者的适配层（pition 对应 `sop.ts` / `scene.ts` / `prompt-state.ts` / `role.ts`）。
